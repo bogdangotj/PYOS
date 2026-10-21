@@ -1,5 +1,3 @@
-PyOS v19.3 «Nexus» — README.md
-
 ```markdown
 <div align="center">
 
