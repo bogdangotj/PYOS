@@ -4585,8 +4585,8 @@ class Shell:
             input(C.c("\n  Enter...", C.DIM))
             return
 
-        cur = self._parse_ver(Kernel.VERSION)
-        rem = self._parse_ver(ver)
+        cur = self.kernel.guardian._parse_ver(Kernel.VERSION)
+        rem = self.kernel.guardian._parse_ver(ver)
         if rem < cur:
             print(C.c(f"  На GitHub более старая версия v{ver} (build {bld}). У вас уже новее.", C.Y))
             input(C.c("\n  Enter...", C.DIM))
