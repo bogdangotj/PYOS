@@ -1,0 +1,9 @@
+{
+  "salt": "081dc7231dcdefaa6896ce533a911086",
+  "hash": "9aa2c193bb5a34d3af8856afac7ec06a94aa9cf881bbd2a1d040a310ab5d9858",
+  "algorithm": "Argon2id+salt",
+  "version": "19.2",
+  "build": "20.10.2026",
+  "filename": "v19p19.py",
+  "updated": "2026-10-21T17:25:21.401380"
+}
