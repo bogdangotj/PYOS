@@ -1,0 +1,47 @@
+[INFO]
+name: sysmon
+description: Мониторинг системы - время, сессия, диск, приложения
+version: 1.5.0
+author: Kostyl Studios
+tag: System
+background: false
+
+[CODE]
+print("=== Системный мониторинг ===")
+print()
+
+# Время и сессия
+now = datetime.datetime.now()
+print(f"  Текущее время: {now.strftime('%H:%M:%S %d.%m.%Y')}")
+print(f"  Сессия:        {guardian.session_str()}")
+print()
+
+# Диск
+dk = fs.current_disk
+usage = fs.disk_usage(dk)
+print(f"  Диск {dk}:        {guardian.fmt_size(usage)} занято")
+disks = fs.get_disks()
+print(f"  Доступные диски:  {' '.join(d + ':' for d in disks)}")
+print()
+
+# Приложения
+ac = len(kernel.apps.apps) if kernel.apps else 0
+dc = len(kernel.apps.list_disabled()) if kernel.apps else 0
+print(f"  Приложений:       {ac} активных, {dc} отключено")
+print()
+
+# Пользователь
+print(f"  Пользователь:     {shell.user}")
+print(f"  UAC уровень:      {kernel.settings.get_uac_name()}")
+print(f"  Язык:             {kernel.settings.lang.upper()}")
+[/CODE]
+
+[DATA]
+folder: /apps/data/sysmon
+[/DATA]
+
+[OTHER]
+Free License -- Kostyl Studios
+[/OTHER]
+
+[END]

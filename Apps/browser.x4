@@ -1,0 +1,54 @@
+[INFO]
+name: browser
+description: Демонстрационный веб-браузер с закладками
+version: 1.0.0
+author: Kostyl Studios
+tag: Utility
+background: false
+
+[CODE]
+print("=== PyOS Browser v1.0 ===")
+print()
+
+bookmarks = {
+    "1": "https://github.com/bogdangotj/PYOS",
+    "2": "https://python.org",
+    "3": "https://github.com",
+}
+
+while True:
+    print("1. Перейти по адресу")
+    print("2. Закладки")
+    print("3. История")
+    print("4. Выход")
+    print()
+    
+    choice = input("Выберите (1-4): ").strip()
+    
+    if choice == "1":
+        url = input("  URL: ").strip()
+        if url:
+            print(f"  Загрузка {url}...")
+            print("  [Демо-режим: страница не загружается]")
+    elif choice == "2":
+        print("  Закладки:")
+        for k, v in bookmarks.items():
+            print(f"    {k}. {v}")
+    elif choice == "3":
+        print("  История пуста.")
+    elif choice in ("4", "exit", "q"):
+        break
+    else:
+        print("  Неверный выбор.")
+    print()
+[/CODE]
+
+[DATA]
+folder: /apps/data/browser
+[/DATA]
+
+[OTHER]
+Free License -- Kostyl Studios
+[/OTHER]
+
+[END]

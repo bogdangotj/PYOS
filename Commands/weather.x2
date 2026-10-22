@@ -1,0 +1,39 @@
+[INFO]
+name: weather
+description: Прогноз погоды (демо-версия с симуляцией)
+version: 1.0.0
+author: Kostyl Studios
+tag: Utility
+background: false
+
+[CODE]
+print("=== Прогноз погоды ===")
+print()
+
+import random
+
+cities = ["Москва", "Санкт-Петербург", "Киев", "Минск", "Алматы", "Тбилиси"]
+conditions = ["Ясно", "Облачно", "Дождь", "Снег", "Туман"]
+
+print("  Город           Температура  Состояние")
+print("  ---------------------------------------")
+
+for city in cities:
+    temp = random.randint(-10, 30)
+    cond = random.choice(conditions)
+    print(f"  {city:<15} {temp:>4}°C       {cond}")
+
+print()
+print("Примечание: это демо-версия с симуляцией данных.")
+print("Для реального прогноза подключите API погоды.")
+[/CODE]
+
+[DATA]
+folder: /apps/data/weather
+[/DATA]
+
+[OTHER]
+Free License -- Kostyl Studios
+[/OTHER]
+
+[END]

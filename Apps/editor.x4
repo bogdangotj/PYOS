@@ -1,0 +1,67 @@
+[INFO]
+name: editor
+description: Текстовый редактор с сохранением файлов
+version: 2.0.0
+author: Kostyl Studios
+tag: Technical
+background: false
+
+[CODE]
+print("=== Текстовый редактор v2.0 ===")
+print()
+
+notes_dir = "/apps/data/editor"
+fs.mkdir(notes_dir)
+
+while True:
+    print("1. Создать файл")
+    print("2. Открыть файл")
+    print("3. Список файлов")
+    print("4. Удалить файл")
+    print("5. Выход")
+    print()
+    
+    choice = input("Выберите (1-5): ").strip()
+    
+    if choice == "1":
+        name = input("  Имя файла: ").strip()
+        if name:
+            text = input("  Содержимое: ")
+            fs.write_file(f"{notes_dir}/{name}.txt", text)
+            print("  Сохранено!")
+    elif choice == "2":
+        name = input("  Имя файла: ").strip()
+        data = fs.read_file(f"{notes_dir}/{name}.txt")
+        if data:
+            print(f"  -- {name} --")
+            print(data)
+            print("  -- конец --")
+        else:
+            print("  Не найдено.")
+    elif choice == "3":
+        items = fs.list_dir(notes_dir)
+        if items:
+            for it in items:
+                print(f"  * {it['name']}")
+        else:
+            print("  Файлов нет.")
+    elif choice == "4":
+        name = input("  Имя файла: ").strip()
+        fs.delete(f"{notes_dir}/{name}.txt")
+        print("  Удалено.")
+    elif choice in ("5", "exit", "q"):
+        break
+    else:
+        print("  Неверный выбор.")
+    print()
+[/CODE]
+
+[DATA]
+folder: /apps/data/editor
+[/DATA]
+
+[OTHER]
+Free License -- Kostyl Studios
+[/OTHER]
+
+[END]

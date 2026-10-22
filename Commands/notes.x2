@@ -1,0 +1,66 @@
+[INFO]
+name: notes
+description: Менеджер текстовых заметок
+version: 1.0.0
+author: Kostyl Studios
+tag: Technical
+background: false
+
+[CODE]
+print("=== Менеджер заметок ===")
+print()
+
+notes_dir = "/apps/data/notes"
+fs.mkdir(notes_dir)
+
+while True:
+    print("1. Создать заметку")
+    print("2. Прочитать заметку")
+    print("3. Список заметок")
+    print("4. Удалить заметку")
+    print("5. Выход")
+    print()
+    
+    choice = input("Выберите (1-5): ").strip()
+    
+    if choice == "1":
+        name = input("  Имя заметки: ").strip()
+        if name:
+            text = input("  Текст: ")
+            fs.write_file(f"{notes_dir}/{name}.txt", text)
+            print("  Сохранено!")
+    elif choice == "2":
+        name = input("  Имя заметки: ").strip()
+        data = fs.read_file(f"{notes_dir}/{name}.txt")
+        if data:
+            print(f"  -- {name} --")
+            print(data)
+        else:
+            print("  Не найдено.")
+    elif choice == "3":
+        items = fs.list_dir(notes_dir)
+        if items:
+            for it in items:
+                print(f"  * {it['name']}")
+        else:
+            print("  Заметок нет.")
+    elif choice == "4":
+        name = input("  Имя заметки: ").strip()
+        fs.delete(f"{notes_dir}/{name}.txt")
+        print("  Удалено.")
+    elif choice in ("5", "exit", "q"):
+        break
+    else:
+        print("  Неверный выбор.")
+    print()
+[/CODE]
+
+[DATA]
+folder: /apps/data/notes
+[/DATA]
+
+[OTHER]
+Free License -- Kostyl Studios
+[/OTHER]
+
+[END]

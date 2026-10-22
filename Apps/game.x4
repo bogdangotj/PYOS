@@ -1,0 +1,54 @@
+[INFO]
+name: game
+description: Игра "Угадай число" с подсчётю попыток
+version: 1.2.0
+author: Kostyl Studios
+tag: Game
+background: false
+
+[CODE]
+print("=== Игра 'Угадай число' v1.2 ===")
+print()
+
+import random
+
+target = random.randint(1, 100)
+attempts = 0
+
+print("Я загадал число от 1 до 100.")
+print("Попробуйте угадать!")
+print()
+
+while True:
+    val = input("Ваша догадка (или 'exit'): ").strip()
+    
+    if val.lower() in ('exit', 'quit', 'q'):
+        print(f"Игра прервана. Было загадано: {target}")
+        break
+    
+    if not val.isdigit():
+        print("Введите целое число!")
+        continue
+    
+    num = int(val)
+    attempts += 1
+    
+    if num < target:
+        print("  Моё число больше!")
+    elif num > target:
+        print("  Моё число меньше!")
+    else:
+        print(f"ПОЗДРАВЛЯЕМ! Угадали за {attempts} попыток!")
+        notify("Игра: Угадай число", f"Победа за {attempts} попыток!")
+        break
+[/CODE]
+
+[DATA]
+folder: /apps/data/game
+[/DATA]
+
+[OTHER]
+Free License -- Kostyl Studios
+[/OTHER]
+
+[END]
