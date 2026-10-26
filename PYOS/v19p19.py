@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-#  PyOS v19.2 "Nexus" — build 20.10.2026
+#  PyOS v19.3 "Nexus" — build 21.10.2026
 #  Kostyl Studios | Argon2id+salt | Root/User/Program | UAC + GitHub AppStore
 # ═══════════════════════════════════════════════════════════════
 from contextlib import contextmanager, redirect_stdout
@@ -123,9 +123,13 @@ def perm_program(user, app):
 def _spawn_thread_helper(fn, *args, **kwargs):
     """Создаёт поток, наследующий текущие права вызывающего."""
     parent = PermissionContext._state()
+    level, user, app = parent
 
     def wrapper():
-        PermissionContext.set(*parent)
+        if level == Perm.USER and app:
+            PermissionContext.set(Perm.PROGRAM, user=user, app=app)
+        else:
+            PermissionContext.set(*parent)
         try:
             fn(*args, **kwargs)
         finally:
@@ -184,11 +188,6 @@ def _safe_eval_node(node, g, l):
         if isinstance(node.value, (int, float, complex, bool)) or node.value is None:
             return node.value
         raise ValueError(f"Constant {type(node.value).__name__} not allowed")
-    if isinstance(node, (ast.Num, ast.Str, ast.Bytes, ast.NameConstant)):
-        v = getattr(node, 'n', getattr(node, 's', getattr(node, 'value', None)))
-        if isinstance(v, (int, float, complex, bool, str)) or v is None:
-            return v
-        raise ValueError("Constant not allowed")
     if isinstance(node, ast.BinOp):
         op_type = type(node.op)
         if op_type not in _SAFE_BINOPS:
@@ -433,7 +432,7 @@ def compute_file_hash(filepath) -> str:
         return ""
 
 
-def save_code_hash(sp, cur_hash=None, version='19.2', build='20.10.2026'):
+def save_code_hash(sp, cur_hash=None, version='19.3', build='21.10.2026'):
     if cur_hash is None:
         cur_hash = compute_file_hash(sp)
     _save_pyos_meta(sp, {
@@ -717,17 +716,17 @@ class SimpleBox:
 
 class BSOD:
     @staticmethod
-    def show(code='CRITICAL_DATA_DESTROYED', msg='System data destroyed.', details=''):
+    def show(code='КРИТИЧЕСКИЙ_СБОЙ_ДАННЫХ', msg='Системные данные уничтожены.', details=''):
         clear()
         w = 60
         print('=' * w)
         print('  :(')
-        print(f'  Error: {code}')
+        print(f'  Ошибка: {code}')
         print(f'  {msg}')
         if details:
             print(f'  {details}')
         print('=' * w)
-        print('  Press Enter to restart...')
+        print('  Нажмите Enter для перезапуска...')
 
     @staticmethod
     def crash_and_restart(code, msg, details=''):
@@ -771,7 +770,7 @@ class FSHealthChecker:
                 self._running = False
                 self.kernel.trigger_bsod(
                     'CRITICAL_DATA_DESTROYED',
-                    'System data folder deleted.',
+                    'Папка системных данных удалена.',
                     f'Missing: {self.fs.hostname_dir if self.fs else "?"}')
                 self.kernel.running = False
                 return
@@ -849,14 +848,14 @@ class NotificationCenter:
         unread = self.get_unread()
         if not unread:
             return None
-        lines = [C.c(f"  [Notifications ({len(unread)} new)]", C.Y + C.B)]
+        lines = [C.c(f"  [Уведомления ({len(unread)} новых)]", C.Y + C.B)]
         shown = unread[-max_show:]
         if len(unread) > max_show:
-            lines.append(C.c(f"  ... and {len(unread)-max_show} more", C.DIM))
+            lines.append(C.c(f"  ... и ещё {len(unread)-max_show}", C.DIM))
         for n in shown:
             ico = {'info': '*', 'warn': '!', 'err': 'X',
                    'ok': '+', 'app': '#', 'timer': '@'}.get(n['icon'], '?')
-            lines.append(f"  {ico} [{n['source'][:10]}] {n['title'][:25]}")
+            lines.append(f"  {ico} [{n['source'][:10]}] {n['title'][:35]}")
             if n['message']:
                 lines.append(f"     {C.c(n['message'][:35], C.DIM)}")
         return '\n'.join(lines)
@@ -992,13 +991,14 @@ class AppBackgroundManager:
 #  REAL FS (права)
 # ═══════════════════════════════════════════════════════════════
 class RealFS:
-    def __init__(self, base_path):
+    def __init__(self, base_path, kernel=None):
         self.base = Path(base_path).resolve()
         self.hostname_dir = None
         self.current_disk = 'C'
         self._index = {}
         self._index_built = False
         self._ilock = threading.Lock()
+        self.kernel = kernel
 
     # ---------- файловый индекс (быстрый поиск по имени) ----------
     def _disk_root(self, disk):
@@ -1075,14 +1075,31 @@ class RealFS:
         user = PermissionContext.user()
         app = PermissionContext.app()
         if level == Perm.USER:
-            if vp == '/sysdata' or vp.startswith('/sysdata/'):
-                return False
-            if is_write and (vp == '/apps/installed' or vp.startswith('/apps/installed/')):
-                return False
-            if vp.startswith('/home/'):
-                parts = vp.split('/')
-                if len(parts) >= 3 and parts[2] and user and parts[2] != user:
+            role = self.kernel.um.get_user_role(user) if self.kernel and self.kernel.um else 'user'
+            if role == 'admin':
+                return True
+            if role == 'guest':
+                if vp == '/sysdata' or vp.startswith('/sysdata/'):
                     return False
+                if is_write and (vp == '/apps/installed' or vp.startswith('/apps/installed/')):
+                    return False
+                if vp.startswith('/home/'):
+                    parts = vp.split('/')
+                    if len(parts) >= 3 and parts[2] and user and parts[2] != user:
+                        return False
+                return True
+            if role == 'user':
+                if vp == '/sysdata' or vp.startswith('/sysdata/'):
+                    return False
+                if is_write and (vp == '/apps/installed' or vp.startswith('/apps/installed/')):
+                    if not self._check_policy(user, 'can_install_apps'):
+                        return False
+                if vp.startswith('/home/'):
+                    parts = vp.split('/')
+                    if len(parts) >= 3 and parts[2] and user and parts[2] != user:
+                        if not self._check_policy(user, 'can_access_other_users'):
+                            return False
+                return True
             return True
         if level == Perm.PROGRAM:
             if not app:
@@ -1097,14 +1114,45 @@ class RealFS:
             return False
         return False
 
+    def _check_policy(self, name, key):
+        if self.kernel and self.kernel.um:
+            return self.kernel.um.get_policy(name, key)
+        return False
+
+    def _user_virtual_path(self, vp):
+        """Перенаправляет системные пути в пользовательские для USER уровня."""
+        user = PermissionContext.user()
+        if not user or PermissionContext.get() != Perm.USER:
+            return vp
+        
+        user_home = f'/home/{user}'
+        
+        mappings = {
+            '/apps/installed': f'{user_home}/apps/installed',
+            '/apps/data': f'{user_home}/apps/data',
+            '/apps/commands': f'{user_home}/apps/commands',
+            '/sysdata': f'{user_home}/sysdata',
+        }
+        
+        for sys_path, user_path in mappings.items():
+            if vp == sys_path or vp.startswith(sys_path + '/'):
+                return vp.replace(sys_path, user_path, 1)
+        
+        return vp
+
     def _resolve_checked(self, path, cwd, write=False):
         vp, disk = self.resolve(path, cwd)
         explicit, _ = self.parse_disk_prefix(path)
         if explicit:
             disk = explicit
+        
+        # Перенаправляем системные пути в пользовательские для USER уровня
+        vp = self._user_virtual_path(vp)
+        
         if not self._check_access(vp, write):
-            raise PermissionError(f"Access denied: {disk}:{vp}")
-        rp, disk2 = self.to_real_path(path, cwd)
+            raise PermissionError(f"Доступ запрещён: {disk}:{vp}")
+        # Используем перенаправленный vp для определения физического пути
+        rp, disk2 = self.to_real_path(vp, cwd)
         return rp, disk2
 
     def init_structure(self, hostname):
@@ -1114,7 +1162,8 @@ class RealFS:
         self.current_disk = 'C'
         for d in ['home', 'sysdata', 'sysdata/trash', 'cache',
                   'cache/deleted_apps', 'cache/trash_archives',
-                  'apps', 'apps/installed', 'apps/data', 'apps/store', 'apps/logs']:
+                  'apps', 'apps/store', 'apps/logs',
+                  'shared']:
             self.get_disk_path('C', d).mkdir(parents=True, exist_ok=True)
         self.rebuild_index()
 
@@ -1660,27 +1709,42 @@ class TrashManager:
                 return False, "Не найдено"
             if rs in (self.fs.hostname_dir, self.fs.base):
                 return False, "Системный корень нельзя"
+            if rs.is_dir():
+                return False, "Директории через корзину не поддерживаются (сжимайте файлы)"
             data = self._load_index()
             iid = data.get('next_id', 1)
             data['next_id'] = iid + 1
-            is_dir = rs.is_dir()
-            sz = self.fs.dir_size_at(vpath, cwd) if is_dir else rs.stat().st_size
-            tfn = f"{iid}_{rs.name}"
+            sz = rs.stat().st_size
+            # Сжимаем файл в lzma и сохраняем как имя.формат.trash
+            try:
+                raw = rs.read_bytes()
+            except (OSError, PermissionError) as e:
+                return False, f"Ошибка чтения: {e}"
+            compressed = lzma.compress(raw, preset=9 | lzma.PRESET_EXTREME)
+            # Имя в корзине: оригиналное_имя.расширение.trash
+            base_name = rs.name
+            dot_idx = base_name.rfind('.')
+            if dot_idx > 0:
+                trash_name = f"{base_name[:dot_idx]}.{base_name[dot_idx+1:]}.trash"
+            else:
+                trash_name = f"{base_name}.trash"
+            tfn = f"{iid}_{trash_name}"
             tvp = f"{self.trash_dir}/{tfn}"
             with perm_root():
                 self.fs.mkdir(self.trash_dir)
                 rd, _ = self.fs.to_real_path(tvp)
             try:
-                shutil.move(str(rs), str(rd))
-            except (OSError, PermissionError, shutil.Error) as e:
+                rd.write_bytes(compressed)
+                rs.unlink()
+            except (OSError, PermissionError) as e:
                 return False, f"Ошибка: {e}"
-            entry = {'id': iid, 'name': rs.name, 'orig_path': resolved,
-                     'disk': du, 'size': sz, 'is_dir': is_dir,
-                     'trash_name': tfn,
+            entry = {'id': iid, 'name': base_name, 'orig_path': resolved,
+                     'disk': du, 'size': sz, 'compressed_size': len(compressed),
+                     'is_dir': False, 'trash_name': tfn,
                      'deleted_at': datetime.datetime.now().isoformat()}
             data['items'].append(entry)
             self._save_index(data)
-            return True, f"'{rs.name}' → Корзина [ID #{iid}]"
+            return True, f"'{base_name}' → Корзина (сжато {sz}→{len(compressed)} байт) [ID #{iid}]"
 
     def list_items(self):
         with self._lock:
@@ -1720,9 +1784,12 @@ class TrashManager:
             if rd.exists():
                 return False, f"'{safe}' уже существует"
             try:
-                shutil.move(str(rt), str(rd))
-            except (OSError, PermissionError, shutil.Error) as e:
-                return False, f"Ошибка: {e}"
+                compressed = rt.read_bytes()
+                raw = lzma.decompress(compressed)
+                rd.write_bytes(raw)
+                rt.unlink()
+            except (OSError, PermissionError, lzma.LZMAError) as e:
+                return False, f"Ошибка восстановления: {e}"
             items.remove(target)
             self._save_index(data)
             return True, f"'{target['name']}' → {od}:{safe}"
@@ -1802,12 +1869,28 @@ class TrashManager:
 #  USERS
 # ═══════════════════════════════════════════════════════════════
 class UserManager:
-    HIDDEN_FIELDS = {'pw'}
+    HIDDEN_FIELDS = {'pw', 'protected_folder_pw'}
+
+    ROLES = {'guest': 'Гость', 'user': 'Пользователь', 'admin': 'Администратор'}
+
+    POLICY_KEYS = {
+        'can_root': 'Права ROOT',
+        'can_install_apps': 'Установка приложений',
+        'can_remove_apps': 'Удаление приложений',
+        'can_modify_files': 'Изменение файлов системы',
+        'can_access_other_users': 'Доступ к другим пользователям',
+        'can_change_settings': 'Изменение настроек',
+        'can_create_users': 'Создание пользователей',
+        'can_delete_users': 'Удаление пользователей',
+        'can_modify_users': 'Изменение пользователей',
+    }
 
     def __init__(self):
         self.users = {}
+        self.policies = {}  # name -> {policy_key: bool}
+        self.temp_guests = set()  # пользователи-goсти на удаление
 
-    def create(self, name, pw=None, hint=''):
+    def create(self, name, pw=None, hint='', role='user'):
         if name in self.users:
             return False, "User exists"
         ex = [u['uid'] for u in self.users.values()]
@@ -1817,8 +1900,141 @@ class UserManager:
                             'has_password': has_pw, 'uid': uid,
                             'home': f'/home/{name}', 'hint': hint,
                             'created': datetime.datetime.now().isoformat(),
-                            'disk': 'C'}
+                            'disk': 'C', 'role': role,
+                            'temp_guest': role == 'guest',
+                            'login_count': 0}
+        self.policies[name] = self._default_policy(role)
         return True, ""
+
+    def _default_policy(self, role):
+        if role == 'admin':
+            return {k: True for k in self.POLICY_KEYS}
+        elif role == 'guest':
+            return {k: False for k in self.POLICY_KEYS}
+        else:  # user
+            return {k: False for k in self.POLICY_KEYS}
+
+    def set_policy(self, name, key, value):
+        if name not in self.users:
+            return False
+        if key not in self.POLICY_KEYS:
+            return False
+        self.policies[name][key] = bool(value)
+        return True
+
+    def get_policy(self, name, key):
+        return self.policies.get(name, {}).get(key, False)
+
+    def get_user_role(self, name):
+        return self.users.get(name, {}).get('role', 'user')
+
+    def is_admin(self, name):
+        return self.get_user_role(name) == 'admin'
+
+    def is_guest(self, name):
+        return self.get_user_role(name) == 'guest'
+
+    def mark_temp_guest(self, name):
+        self.temp_guests.add(name)
+        if name in self.users:
+            self.users[name]['temp_guest'] = True
+
+    def is_temp_guest(self, name):
+        return name in self.temp_guests
+
+    def auth(self, name, pw):
+        if name not in self.users:
+            return False
+        u = self.users[name]
+        if u.get('temp_guest') and u.get('login_count', 0) > 0:
+            return False  # временный гость уже входил
+        if not u.get('has_password', True):
+            return True
+        if not pw:
+            return False
+        try:
+            return ARGON2_HASHER.verify(u['pw'], pw)
+        except (VerificationError, VerifyMismatchError):
+            return False
+        except Exception:
+            return False
+
+    def has_password(self, name):
+        return self.users.get(name, {}).get('has_password', False)
+
+    def change_password(self, name, new_pw):
+        if name not in self.users:
+            return False
+        if new_pw is None or new_pw == '':
+            self.users[name]['pw'] = ''
+            self.users[name]['has_password'] = False
+        else:
+            self.users[name]['pw'] = ARGON2_HASHER.hash(new_pw)
+            self.users[name]['has_password'] = True
+        return True
+
+    def get_hint(self, name):
+        return self.users.get(name, {}).get('hint', '')
+
+    def set_hint(self, name, hint):
+        if name in self.users:
+            self.users[name]['hint'] = hint
+
+    def get_disk(self, name):
+        return self.users.get(name, {}).get('disk', 'C')
+
+    def set_disk(self, name, disk):
+        if name in self.users:
+            self.users[name]['disk'] = disk
+
+    def delete(self, name):
+        if name not in self.users:
+            return False
+        del self.users[name]
+        self.policies.pop(name, None)
+        self.temp_guests.discard(name)
+        return True
+
+    def list_users(self):
+        return list(self.users.keys())
+
+    def get_public_info(self, name):
+        if name not in self.users:
+            return None
+        return {k: v for k, v in self.users[name].items() if k not in self.HIDDEN_FIELDS}
+
+    def set_protected_folder_password(self, name, password):
+        """Устанавливает пароль для защищённой папки пользователя."""
+        if name not in self.users:
+            return False
+        if password is None or password == '':
+            self.users[name]['protected_folder_pw'] = ''
+            self.users[name]['protected_folder_locked'] = False
+        else:
+            self.users[name]['protected_folder_pw'] = ARGON2_HASHER.hash(password)
+            self.users[name]['protected_folder_locked'] = True
+        return True
+
+    def check_protected_folder_password(self, name, password):
+        """Проверяет пароль защищённой папки."""
+        if name not in self.users:
+            return False
+        pw_hash = self.users[name].get('protected_folder_pw', '')
+        if not pw_hash:
+            return True
+        if not password:
+            return False
+        try:
+            return ARGON2_HASHER.verify(pw_hash, pw_hash)
+        except (VerificationError, VerifyMismatchError):
+            return False
+        except Exception:
+            return False
+
+    def is_protected_folder_locked(self, name):
+        if name not in self.users:
+            return False
+        return self.users[name].get('protected_folder_locked', False)
 
     def auth(self, name, pw):
         if name not in self.users:
@@ -1877,6 +2093,39 @@ class UserManager:
             return None
         return {k: v for k, v in self.users[name].items() if k not in self.HIDDEN_FIELDS}
 
+    def set_protected_folder_password(self, name, password):
+        """Устанавливает пароль для защищённой папки пользователя."""
+        if name not in self.users:
+            return False
+        if password is None or password == '':
+            self.users[name]['protected_folder_pw'] = ''
+            self.users[name]['protected_folder_locked'] = False
+        else:
+            self.users[name]['protected_folder_pw'] = ARGON2_HASHER.hash(password)
+            self.users[name]['protected_folder_locked'] = True
+        return True
+
+    def check_protected_folder_password(self, name, password):
+        """Проверяет пароль защищённой папки."""
+        if name not in self.users:
+            return False
+        pw_hash = self.users[name].get('protected_folder_pw', '')
+        if not pw_hash:
+            return True
+        if not password:
+            return False
+        try:
+            return ARGON2_HASHER.verify(pw_hash, password)
+        except (VerificationError, VerifyMismatchError):
+            return False
+        except Exception:
+            return False
+
+    def is_protected_folder_locked(self, name):
+        if name not in self.users:
+            return False
+        return self.users[name].get('protected_folder_locked', False)
+
 
 # ═══════════════════════════════════════════════════════════════
 #  GUARDIAN & GITHUB INTEGRATION (Caching & Rate-limit Handling)
@@ -1886,6 +2135,8 @@ class Guardian:
     GITHUB_VER_URL = "https://raw.githubusercontent.com/bogdangotj/PYOS/main/PYOS/version.json"
     GITHUB_APPS_API_URL = "https://api.github.com/repos/bogdangotj/PYOS/contents/Apps"
     GITHUB_RAW_APPS_BASE = "https://raw.githubusercontent.com/bogdangotj/PYOS/main/Apps"
+    GITHUB_COMMANDS_API_URL = "https://api.github.com/repos/bogdangotj/PYOS/contents/Commands"
+    GITHUB_COMMANDS_RAW_BASE = "https://raw.githubusercontent.com/bogdangotj/PYOS/main/Commands"
 
     def __init__(self):
         self.session_start = datetime.datetime.now()
@@ -1895,6 +2146,8 @@ class Guardian:
         self.suggest_commands = True
         self._store_cache = None
         self._store_cache_time = 0.0
+        self._cmd_cache = None
+        self._cmd_cache_time = 0.0
 
     def session_seconds(self):
         return int((datetime.datetime.now() - self.session_start).total_seconds())
@@ -2002,6 +2255,29 @@ class Guardian:
         save_code_hash(sp, cur_hash=nh, version=ver, build=bld)
         return True, f"Код обновлён. Хеш: {nh[:16]}..."
 
+    def check_authenticity(self):
+        """Проверяет подлинность PYOS через сравнение хэша с GitHub."""
+        try:
+            req = urllib.request.Request(self.GITHUB_VER_URL, headers={'User-Agent': 'PyOS-Nexus'})
+            with urllib.request.urlopen(req, timeout=7) as response:
+                data = json.loads(response.read().decode('utf-8'))
+            remote_version = data.get("version", "")
+            remote_build = data.get("build", "")
+            remote_filename = data.get("filename", "")
+            if not remote_filename:
+                return False, "Неизвестно", "Нет имени файла в version.json"
+            remote_code = self.download_github_code(remote_filename)
+            salt = _load_or_create_salt(get_script_path())
+            remote_hash = argon2id_hash_bytes(remote_code.encode('utf-8'), salt)
+            sp = get_script_path()
+            local_hash = compute_file_hash(sp)
+            if remote_hash == local_hash:
+                return True, f"v{remote_version} (build {remote_build})", "Подлинная копия"
+            else:
+                return False, f"v{remote_version} (build {remote_build})", "Ваш PYOS является модифицированным"
+        except Exception as e:
+            return False, "Неизвестно", str(e)
+
     def check_github_update_async(self, current_version, callback):
         def _bg():
             res = self.check_github_update(current_version)
@@ -2074,7 +2350,7 @@ class Guardian:
             elif isinstance(items, dict):
                 name = items.get('name', '')
                 if name.endswith('.x4') or name.endswith('.x4s'):
-                    versions.append(app_name if '/' not in app_name else app_name)
+                    versions.append(name)
             if not versions:
                 return True, [f"{app_name}.x4"]
             return True, versions
@@ -2084,6 +2360,38 @@ class Guardian:
             return False, [f"{app_name}.x4"]
         except Exception:
             return False, [f"{app_name}.x4"]
+
+    def fetch_commands(self, force_refresh=False):
+        """Загрузка списка доступных команд из папки Commands на GitHub."""
+        now = time.time()
+        if not force_refresh and self._cmd_cache and (now - self._cmd_cache_time < 300):
+            return True, self._cmd_cache
+        try:
+            req = urllib.request.Request(self.GITHUB_COMMANDS_API_URL, headers={'User-Agent': 'PyOS-Nexus'})
+            with urllib.request.urlopen(req, timeout=7) as response:
+                items = json.loads(response.read().decode('utf-8'))
+            cmds = []
+            if isinstance(items, list):
+                for item in items:
+                    name = item.get('name', '')
+                    if name.endswith('.x2'):
+                        cmds.append(name)
+            self._cmd_cache = cmds
+            self._cmd_cache_time = now
+            if not cmds:
+                return True, []
+            return True, cmds
+        except Exception as e:
+            return False, str(e)
+
+    def download_command_file(self, cmd_path):
+        url = f"{self.GITHUB_COMMANDS_RAW_BASE}/{cmd_path}"
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'PyOS-Nexus'})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                return response.read()
+        except Exception as e:
+            raise RuntimeError(f"Не удалось скачать команду: {e}")
 
     def download_app_file(self, app_path):
         url = f"{self.GITHUB_RAW_APPS_BASE}/{app_path}"
@@ -2607,38 +2915,83 @@ class AppManager:
                     except (lzma.LZMAError, UnicodeDecodeError):
                         pass
 
+    def load_user_installed(self, username):
+        """Загружает приложения из личной папки пользователя."""
+        old_state = PermissionContext._state()
+        PermissionContext.set(Perm.USER, user=username)
+        try:
+            items = self.fs.list_dir('/apps/installed')
+        finally:
+            PermissionContext.set(*old_state)
+        if not items:
+            return
+        for it in items:
+            n = it['name']
+            if it['is_dir']:
+                continue
+            if n.endswith('.x4') and not n.lower().endswith('.x4s'):
+                old_state = PermissionContext._state()
+                PermissionContext.set(Perm.USER, user=username)
+                try:
+                    c = self.fs.read_file('/apps/installed/' + n)
+                finally:
+                    PermissionContext.set(*old_state)
+                if c:
+                    p = X4Parser.parse(c)
+                    p['format'] = 'x4'
+                    key = p['info'].get('name', n[:-3])
+                    self.apps[key] = p
+            elif n.lower().endswith('.x4s'):
+                old_state = PermissionContext._state()
+                PermissionContext.set(Perm.USER, user=username)
+                try:
+                    raw = self.fs.read_bytes('/apps/installed/' + n)
+                finally:
+                    PermissionContext.set(*old_state)
+                if raw:
+                    try:
+                        if raw.startswith(b'X4S\x01'):
+                            d = lzma.decompress(raw[4:]).decode('utf-8', errors='replace')
+                        else:
+                            d = lzma.decompress(raw).decode('utf-8', errors='replace')
+                        p = X4Parser.parse(d)
+                        p['format'] = 'x4s'
+                        key = p['info'].get('name', n[:-4])
+                        self.apps[key] = p
+                    except (lzma.LZMAError, UnicodeDecodeError):
+                        pass
+
     def install_builtins(self):
-        for name, content in self._builtins().items():
-            with perm_root():
+        with perm_root():
+            for name, content in self._builtins().items():
                 self.fs.write_file(f'/apps/installed/{name}.x4', content)
             p = X4Parser.parse(content)
             p['format'] = 'x4'
             an = p['info'].get('name', name)
             self.apps[an] = p
-            with perm_root():
-                self.fs.mkdir(p['data'].get('folder', f'/apps/data/{an}'))
+            self.fs.mkdir(p['data'].get('folder', f'/apps/data/{an}'))
 
     def install(self, filename, cwd='/', home_dir=None):
         content = None
         is_x4s = False
-        with perm_root():
-            if filename.lower().endswith('.x4s'):
-                raw = self.fs.read_bytes(filename, cwd)
-                if raw:
-                    try:
-                        if raw.startswith(b'X4S\x01'):
-                            content = lzma.decompress(raw[4:]).decode('utf-8')
-                        else:
-                            content = lzma.decompress(raw).decode('utf-8')
-                        is_x4s = True
-                    except (lzma.LZMAError, UnicodeDecodeError):
-                        pass
-            else:
-                content = self.fs.read_file(filename, cwd)
-                if not content and home_dir:
-                    content = self.fs.read_file(f"{home_dir}/Documents/{filename}")
-                if not content:
-                    content = self.fs.read_file(f'/apps/store/{filename}')
+        # Читаем файл без perm_root - полагаемся на текущие права
+        if filename.lower().endswith('.x4s'):
+            raw = self.fs.read_bytes(filename, cwd)
+            if raw:
+                try:
+                    if raw.startswith(b'X4S\x01'):
+                        content = lzma.decompress(raw[4:]).decode('utf-8')
+                    else:
+                        content = lzma.decompress(raw).decode('utf-8')
+                    is_x4s = True
+                except (lzma.LZMAError, UnicodeDecodeError):
+                    pass
+        else:
+            content = self.fs.read_file(filename, cwd)
+            if not content and home_dir:
+                content = self.fs.read_file(f"{home_dir}/Documents/{filename}")
+            if not content:
+                content = self.fs.read_file(f'/apps/store/{filename}')
         if not content:
             return False, f"'{filename}' не найден"
         p = X4Parser.parse(content)
@@ -2652,15 +3005,15 @@ class AppManager:
         if not (vp == '/apps/data' or vp.startswith('/apps/data/')):
             vp = f'/apps/data/{name}'
         folder = vp
-        with perm_root():
-            if is_x4s:
-                ro = self.fs.read_bytes(filename, cwd)
-                self.fs.write_bytes(f'/apps/installed/{name}.x4s', ro)
-                p['format'] = 'x4s'
-            else:
-                self.fs.write_file(f'/apps/installed/{name}.x4', content)
-                p['format'] = 'x4'
-            self.fs.mkdir(folder)
+        # Пишем без perm_root - полагаемся на текущие права (USER при вызове из шелла)
+        if is_x4s:
+            ro = self.fs.read_bytes(filename, cwd)
+            self.fs.write_bytes(f'/apps/installed/{name}.x4s', ro)
+            p['format'] = 'x4s'
+        else:
+            self.fs.write_file(f'/apps/installed/{name}.x4', content)
+            p['format'] = 'x4'
+        self.fs.mkdir(folder)
         self.apps[name] = p
         if self.notifications:
             self.notifications.send(
@@ -3000,9 +3353,156 @@ Free License -- Kostyl Studios
 [END]"""
         }
 
+# ════════════════════════════════════════════════════════════════
+#  X2 КАСТОМНЫЕ КОМАНДЫ (с man страницей и кодом)
+# ════════════════════════════════════════════════════════════════
+class X2CommandManager:
+    def __init__(self, fs, guardian, notifications=None):
+        self.fs = fs
+        self.guardian = guardian
+        self.notifications = notifications
+        self.commands = {}
 
-# ═══════════════════════════════════════════════════════════════
-#  HISTORY
+    def load_commands(self):
+        with perm_root():
+            items = self.fs.list_dir('/apps/commands')
+        if not items:
+            return
+        for it in items:
+            if not it['is_dir'] and it['name'].endswith('.x2'):
+                with perm_root():
+                    c = self.fs.read_file('/apps/commands/' + it['name'])
+                if c:
+                    p = X4Parser.parse(c)
+                    if p['code']:
+                        name = p['info'].get('name', it['name'][:-3])
+                        self.commands[name] = {
+                            'info': p['info'],
+                            'code': p['code'],
+                            'file': it['name'],
+                        }
+
+    def load_user_commands(self, username):
+        """Загружает команды из личной папки пользователя."""
+        old_state = PermissionContext._state()
+        PermissionContext.set(Perm.USER, user=username)
+        try:
+            items = self.fs.list_dir('/apps/commands')
+        finally:
+            PermissionContext.set(*old_state)
+        if not items:
+            return
+        for it in items:
+            if not it['is_dir'] and it['name'].endswith('.x2'):
+                old_state = PermissionContext._state()
+                PermissionContext.set(Perm.USER, user=username)
+                try:
+                    c = self.fs.read_file('/apps/commands/' + it['name'])
+                finally:
+                    PermissionContext.set(*old_state)
+                if c:
+                    p = X4Parser.parse(c)
+                    if p['code']:
+                        name = p['info'].get('name', it['name'][:-3])
+                        self.commands[name] = {
+                            'info': p['info'],
+                            'code': p['code'],
+                            'file': it['name'],
+                        }
+
+    def install_command(self, filename, cwd='/'):
+        content = self.fs.read_file(filename, cwd)
+        if not content:
+            return False, f"'{filename}' не найден"
+        p = X4Parser.parse(content)
+        name = AppManager._safe_app_name(p['info'].get('name', ''))
+        if not name:
+            return False, "Некорректное имя команды"
+        if not p['code']:
+            return False, "Нет [CODE]"
+        # Пишем без perm_root - полагаемся на текущие права
+        self.fs.mkdir('/apps/commands')
+        self.fs.write_file(f'/apps/commands/{name}.x2', content)
+        self.commands[name] = {
+            'info': p['info'],
+            'code': p['code'],
+            'file': f'{name}.x2',
+        }
+        if self.notifications:
+            self.notifications.send(
+                source='system', title=f"Команда установлена: {name}",
+                message=p['info'].get('desc', ''),
+                icon='ok', priority='normal')
+        return True, f"Команда '{name}' установлена!"
+
+    def remove_command(self, name):
+        if name not in self.commands:
+            return False, "Команда не найдена"
+        with perm_root():
+            self.fs.delete(f'/apps/commands/{self.commands[name]["file"]}')
+        del self.commands[name]
+        return True, f"Команда '{name}' удалена!"
+
+    def execute(self, name, shell, args=None):
+        if name not in self.commands:
+            return False, f"Команда '{name}' не найдена"
+        cmd = self.commands[name]
+        env = {
+            '__USER__': shell.user,
+            '__TIME__': datetime.datetime.now().strftime('%H:%M:%S'),
+            '__DATE__': datetime.datetime.now().strftime('%Y-%m-%d'),
+            '__CWD__': shell.cwd,
+            '__OS__': 'PyOS ' + shell.kernel.VERSION,
+            '__VERSION__': shell.kernel.VERSION,
+            '__CMD__': name,
+            '__ARGS__': ' '.join(args or []),
+            'print': print,
+            'len': len, 'str': str, 'int': int, 'float': float,
+            'bool': bool, 'list': list, 'dict': dict,
+            'range': range, 'sum': sum, 'min': min, 'max': max,
+            'abs': abs, 'round': round,
+            'shell': shell,
+            'fs': shell.kernel.fs,
+            'kernel': shell.kernel,
+            'guardian': shell.kernel.guardian,
+            'datetime': datetime,
+            'C': C,
+            'color': lambda t, c='white': print(C.c(str(t), {'red': C.R, 'green': C.G,
+                'yellow': C.Y, 'blue': C.BL, 'cyan': C.CY, 'magenta': C.M,
+                'white': C.W}.get(c.lower(), C.W))),
+            'notify': lambda t, m: shell.kernel.notifications.send(
+                source=name, title=str(t), message=str(m),
+                icon='app', priority='normal'),
+        }
+        old_state = PermissionContext._state()
+        PermissionContext.set(Perm.PROGRAM, user=shell.user, app=f'x2:{name}')
+        try:
+            exec(cmd['code'], env)
+        except KeyboardInterrupt:
+            print("\n  [Прервано]")
+        except Exception as e:
+            print(C.c(f"  [Ошибка команды x2] {e}", C.R))
+            if shell.kernel.settings.debug_mode and shell.kernel.debug:
+                shell.kernel.debug.log('x2_command_error', str(e),
+                                       tb_module.format_exc(), f'cmd:{name}', '')
+        finally:
+            PermissionContext.set(*old_state)
+        
+        # Пауза для просмотра вывода/ошибки перед возвратом в шелл
+        try:
+            input(C.c("\n  Нажмите Enter для продолжения...", C.DIM))
+        except (EOFError, KeyboardInterrupt):
+            pass
+        return True, ""
+
+    def get_man(self, name):
+        if name not in self.commands:
+            return None
+        return self.commands[name]['info']
+
+
+# ════════════════════════════════════════════════════════════════
+#  HISTORY#  HISTORY
 # ═══════════════════════════════════════════════════════════════
 class HistoryManager:
     def __init__(self, fs, max_size=500):
@@ -3084,6 +3584,7 @@ class Kernel:
         self._bsod_error_code = ''
         self._bsod_message = ''
         self._bsod_details = ''
+        self.x2_cmds = None
 
     def get_now(self):
         return self.settings.get_now()
@@ -3179,12 +3680,13 @@ class Kernel:
     def boot(self):
         clear()
         self.running = True
+        self.guardian.session_start = datetime.datetime.now()
         self.boot_anim()
         self._load_hostname()
         loaded = self.load_state()
         if loaded:
             self.first_boot = False
-            self.fs = RealFS(self.base_path)
+            self.fs = RealFS(self.base_path, self)
             self.fs.hostname_dir = (Path(self.base_path) / self.hostname).resolve()
             self.fs.current_disk = 'C'
             self.trash = TrashManager(self.fs, self.guardian)
@@ -3200,11 +3702,14 @@ class Kernel:
                 self.fs.mkdir('/cache/deleted_apps')
                 self.fs.mkdir('/cache/trash_archives')
                 self.fs.mkdir('/sysdata/trash')
+            self.fs.rebuild_index()
             if self.timer_service.get_active():
                 self.timer_service.start()
             self._fs_checker = FSHealthChecker(self.fs, self)
             self._fs_checker.start()
             self.run_smart_memory_cleanup()
+            self.x2_cmds = X2CommandManager(self.fs, self.guardian, self.notifications)
+            self.x2_cmds.load_commands()
             self._start_hourly_autobackup_worker()
             if self.settings.auto_backup == 'at_start':
                 BackupManager.create_backup("auto_boot", self)
@@ -3253,13 +3758,16 @@ class Kernel:
         self.trash = TrashManager(self.fs, self.guardian)
         self.debug = DebugLogger(self.fs)
         un = 'User'
-        self.um.create(un, None, '')
+        self.um.create(un, None, '', role='admin')
         with perm_root():
-            for d in [f'/home/{un}', f'/home/{un}/Desktop', f'/home/{un}/Documents']:
+            for d in [f'/home/{un}', f'/home/{un}/Desktop', f'/home/{un}/Documents',
+                      f'/home/{un}/apps/installed', f'/home/{un}/apps/data',
+                      f'/home/{un}/apps/commands', f'/home/{un}/sysdata',
+                      f'/home/{un}/sysdata/trash', f'/home/{un}/cache',
+                      f'/home/{un}/cache/deleted_apps', f'/home/{un}/cache/trash_archives']:
                 self.fs.mkdir(d)
         self.guardian.set_app_folder_limit(1024 * 1024)
         self.apps = AppManager(self.fs, self.guardian, self.notifications, self.app_bg)
-        self.apps.install_builtins()
         self.history = HistoryManager(self.fs)
         self._fs_checker = FSHealthChecker(self.fs, self)
         self._fs_checker.start()
@@ -3272,7 +3780,7 @@ class Kernel:
     def _manual_setup(self):
         self.hostname = input("  Имя компьютера [pyos]: ").strip() or 'pyos'
         self._save_hostname()
-        self.fs = RealFS(self.base_path)
+        self.fs = RealFS(self.base_path, self)
         self.fs.init_structure(self.hostname)
         self.trash = TrashManager(self.fs, self.guardian)
         self.debug = DebugLogger(self.fs)
@@ -3296,10 +3804,13 @@ class Kernel:
         else:
             self.um.create(un, None, '')
         with perm_root():
-            for d in [f'/home/{un}', f'/home/{un}/Desktop', f'/home/{un}/Documents']:
+            for d in [f'/home/{un}', f'/home/{un}/Desktop', f'/home/{un}/Documents',
+                      f'/home/{un}/apps/installed', f'/home/{un}/apps/data',
+                      f'/home/{un}/apps/commands', f'/home/{un}/sysdata',
+                      f'/home/{un}/sysdata/trash', f'/home/{un}/cache',
+                      f'/home/{un}/cache/deleted_apps', f'/home/{un}/cache/trash_archives']:
                 self.fs.mkdir(d)
         self.apps = AppManager(self.fs, self.guardian, self.notifications, self.app_bg)
-        self.apps.install_builtins()
         self.history = HistoryManager(self.fs)
         self._fs_checker = FSHealthChecker(self.fs, self)
         self._fs_checker.start()
@@ -3494,6 +4005,15 @@ class Shell:
         'userdel': {'desc': 'Удалить пользователя.', 'synopsis': 'userdel <имя>',
                     'details': 'Удалить пользователя (ROOT).', 'options': [],
                     'examples': ['userdel Novy']},
+        'moduser': {'desc': 'Изменить роль пользователя.', 'synopsis': 'moduser <имя> <роль>',
+                    'details': 'Изменить роль пользователя (user, admin, guest).', 'options': [],
+                    'examples': ['moduser Novy admin']},
+        'role': {'desc': 'Показать роль пользователя.', 'synopsis': 'role <имя>',
+                 'details': 'Показать роль и политики пользователя.', 'options': [],
+                 'examples': ['role Novy']},
+        'policy': {'desc': 'Управление политиками.', 'synopsis': 'policy <имя> <ключ> [on|off]',
+                   'details': 'Управлять групповыми политиками пользователя.', 'options': [],
+                   'examples': ['policy Novy can_root on']},
         'echo': {'desc': 'Вывести текст.', 'synopsis': 'echo <текст>',
                  'details': 'Напечатать текст на экране.', 'options': [],
                  'examples': ['echo Привет']},
@@ -3542,6 +4062,144 @@ class Shell:
         'debug': {'desc': 'Отладка.', 'synopsis': 'debug [clear]',
                   'details': 'Показать или очистить журнал ошибок.', 'options': [],
                   'examples': ['debug']},
+        'disk': {'desc': 'Управление дисками.', 'synopsis': 'disk [add|rm]',
+                 'details': 'Показать список дисков, добавить или удалить виртуальный диск.', 'options': [],
+                 'examples': ['disk', 'disk add D', 'disk rm D']},
+        'alias': {'desc': 'Псевдонимы команд.', 'synopsis': 'alias [имя=команда]',
+                  'details': 'Показать или создать псевдоним команды.', 'options': [],
+                  'examples': ['alias', 'alias ll=ls -l']},
+        'cat': {'desc': 'Вывести файл.', 'synopsis': 'cat <файл>',
+                'details': 'Показать содержимое текстового файла.', 'options': [],
+                'examples': ['cat файл.txt']},
+        'clear': {'desc': 'Очистить экран.', 'synopsis': 'clear',
+                  'details': 'Очистить терминал и показать рабочий стол.', 'options': [],
+                  'examples': ['clear']},
+        'cp': {'desc': 'Копировать файл.', 'synopsis': 'cp <источник> <назначение>',
+               'details': 'Скопировать файл или директорию.', 'options': [],
+               'examples': ['cp файл.txt копия.txt']},
+        'df': {'desc': 'Место на дисках.', 'synopsis': 'df',
+               'details': 'Показать использование места на всех дисках.', 'options': [],
+               'examples': ['df']},
+        'du': {'desc': 'Размер директории.', 'synopsis': 'du [путь]',
+               'details': 'Показать размер указанной директории.', 'options': [],
+               'examples': ['du', 'du /home']},
+        'echo': {'desc': 'Вывести текст.', 'synopsis': 'echo <текст>',
+                 'details': 'Напечатать текст на экране.', 'options': [],
+                 'examples': ['echo Привет']},
+        'edit': {'desc': 'Редактор файлов.', 'synopsis': 'edit <файл>',
+                 'details': 'Открыть файл в простом текстовом редакторе.', 'options': [],
+                 'examples': ['edit файл.txt']},
+        'env': {'desc': 'Переменные окружения.', 'synopsis': 'env [имя=значение]',
+                'details': 'Показать или задать переменные окружения.', 'options': [],
+                'examples': ['env', 'env FOO=bar']},
+        'exit': {'desc': 'Выход из PyOS.', 'synopsis': 'exit',
+                 'details': 'Завершить сессию PyOS.', 'options': [],
+                 'examples': ['exit']},
+        'export': {'desc': 'Экспорт переменной.', 'synopsis': 'export <имя>=<значение>',
+                   'details': 'Задать переменную окружения.', 'options': [],
+                   'examples': ['export FOO=bar']},
+        'find': {'desc': 'Поиск файлов.', 'synopsis': 'find [путь] <шаблон>',
+                 'details': 'Найти файлы по имени.', 'options': [],
+                 'examples': ['find', 'find . файл.txt']},
+        'grep': {'desc': 'Поиск в файле.', 'synopsis': 'grep <шаблон> <файл>',
+                 'details': 'Найти строку в файле.', 'options': [],
+                 'examples': ['grep текст файл.txt']},
+        'help': {'desc': 'Справка по командам.', 'synopsis': 'help',
+                 'details': 'Показать список всех команд по категориям.', 'options': [],
+                 'examples': ['help']},
+        'history': {'desc': 'История команд.', 'synopsis': 'history [clear|search]',
+                    'details': 'Показать историю введённых команд.', 'options': [],
+                    'examples': ['history', 'history clear']},
+        'id': {'desc': 'Информация о пользователе.', 'synopsis': 'id [пользователь]',
+               'details': 'Показать uid, диск и статус пароля пользователя.', 'options': [],
+               'examples': ['id', 'id User']},
+        'logs': {'desc': 'Журнал ошибок.', 'synopsis': 'logs [clear|<файл>]',
+                 'details': 'Показать или очистить логи приложений.', 'options': [],
+                 'examples': ['logs', 'logs clear']},
+        'mkdir': {'desc': 'Создать директорию.', 'synopsis': 'mkdir <путь>',
+                  'details': 'Создать новую директорию.', 'options': [],
+                  'examples': ['mkdir папка']},
+        'mv': {'desc': 'Переместить файл.', 'synopsis': 'mv <источник> <назначение>',
+               'details': 'Переместить или переименовать файл.', 'options': [],
+               'examples': ['mv файл.txt папка/']},
+        'nano': {'desc': 'Редактор файлов.', 'synopsis': 'nano <файл>',
+                 'details': 'Альтернативное имя для edit.', 'options': [],
+                 'examples': ['nano файл.txt']},
+        'newapp': {'desc': 'Создать приложение.', 'synopsis': 'newapp <имя> [тег]',
+                   'details': 'Создать шаблон X4-приложения.', 'options': [],
+                   'examples': ['newapp мое_приложение']},
+        'notif': {'desc': 'Уведомления.', 'synopsis': 'notif [read|clear]',
+                  'details': 'Показать или управлять уведомлениями.', 'options': [],
+                  'examples': ['notif', 'notif clear']},
+        'passwd': {'desc': 'Смена пароля.', 'synopsis': 'passwd [пользователь]',
+                   'details': 'Изменить пароль пользователя.', 'options': [],
+                   'examples': ['passwd']},
+        'realpath': {'desc': 'Реальный путь.', 'synopsis': 'realpath <путь>',
+                     'details': 'Показать реальный путь к файлу.', 'options': [],
+                     'examples': ['realpath файл.txt']},
+        'reboot': {'desc': 'Перезагрузка.', 'synopsis': 'reboot',
+                   'details': 'Перезагрузить PyOS.', 'options': [],
+                   'examples': ['reboot']},
+        'recycle': {'desc': 'Корзина.', 'synopsis': 'recycle [list|empty|rm|restore]',
+                    'details': 'Альтернативное имя для trash.', 'options': [],
+                    'examples': ['recycle list']},
+        'reload': {'desc': 'Перезагрузить приложения.', 'synopsis': 'reload',
+                   'details': 'Перечитать установленные X4-приложения.', 'options': [],
+                   'examples': ['reload']},
+        'rename': {'desc': 'Переименовать файл.', 'synopsis': 'rename <файл> <новое>',
+                   'details': 'Переименовать файл или директорию.', 'options': [],
+                   'examples': ['rename старый.txt новый.txt']},
+        'rm': {'desc': 'Удалить файл.', 'synopsis': 'rm [--perm] [-r] <файл>',
+               'details': 'Переместить файл в корзину или безвозвратно удалить.', 'options': [],
+               'examples': ['rm файл.txt', 'rm --perm файл.txt']},
+        'rmdir': {'desc': 'Удалить директорию.', 'synopsis': 'rmdir <путь>',
+                  'details': 'Переместить пустую директорию в корзину.', 'options': [],
+                  'examples': ['rmdir папка']},
+        'save': {'desc': 'Сохранить состояние.', 'synopsis': 'save',
+                 'details': 'Сохранить текущее состояние PyOS.', 'options': [],
+                 'examples': ['save']},
+        'shutdown': {'desc': 'Завершить работу.', 'synopsis': 'shutdown',
+                     'details': 'Завершить сессию PyOS.', 'options': [],
+                     'examples': ['shutdown']},
+        'smartmem': {'desc': 'Smart Memory.', 'synopsis': 'smartmem [on|off|clean]',
+                     'details': 'Управление автоматическим очищением памяти.', 'options': [],
+                     'examples': ['smartmem on']},
+        'store': {'desc': 'Центр приложений.', 'synopsis': 'store',
+                  'details': 'Открыть Центр Приложений GitHub AppStore.', 'options': [],
+                  'examples': ['store']},
+        'suggest': {'desc': 'Подсказки команд.', 'synopsis': 'suggest [on|off]',
+                    'details': 'Включить или отключить подсказки при ошибке ввода.', 'options': [],
+                    'examples': ['suggest on']},
+        'tags': {'desc': 'Теги приложений.', 'synopsis': 'tags',
+                 'details': 'Показать приложения по тегам.', 'options': [],
+                 'examples': ['tags']},
+        'timer': {'desc': 'Таймеры.', 'synopsis': 'timer [add|rm|clear]',
+                  'details': 'Управление таймерами.', 'options': [],
+                  'examples': ['timer add 10 Метка']},
+        'touch': {'desc': 'Создать файл.', 'synopsis': 'touch <файл>',
+                  'details': 'Создать пустой файл или обновить время изменения.', 'options': [],
+                  'examples': ['touch файл.txt']},
+        'tree': {'desc': 'Дерево файлов.', 'synopsis': 'tree [путь]',
+                 'details': 'Показать иерархию директорий.', 'options': [],
+                 'examples': ['tree', 'tree /apps']},
+        'useradd': {'desc': 'Создать пользователя.', 'synopsis': 'useradd <имя>',
+                    'details': 'Создать нового пользователя (требуются ROOT права).', 'options': [],
+                    'examples': ['useradd Новый']},
+        'userdel': {'desc': 'Удалить пользователя.', 'synopsis': 'userdel <имя>',
+                    'details': 'Удалить пользователя (требуются ROOT права).', 'options': [],
+                    'examples': ['userdel Новый']},
+        'users': {'desc': 'Список пользователей.', 'synopsis': 'users',
+                  'details': 'Показать всех зарегистрированных пользователей.', 'options': [],
+                  'examples': ['users']},
+        'wc': {'desc': 'Подсчёт в файле.', 'synopsis': 'wc <файл>',
+               'details': 'Подсчитать строки, слова и байты в файле.', 'options': [],
+               'examples': ['wc файл.txt']},
+        'whoami': {'desc': 'Текущий пользователь.', 'synopsis': 'whoami',
+                   'details': 'Показать имя текущего пользователя.', 'options': [],
+                   'examples': ['whoami']},
+        'x2cmd': {'desc': 'X2-команды.', 'synopsis': 'x2cmd <list|install|remove|man|run>',
+                  'details': 'Управление кастомными командами формата X2.', 'options': [],
+                  'examples': ['x2cmd list', 'x2cmd run моя_команда']},
     }
 
     def __init__(self, kernel):
@@ -3577,11 +4235,11 @@ class Shell:
         print(f"  PyOS v{Kernel.VERSION} build {Kernel.BUILD} -- {Kernel.COMPANY}")
         print()
         print("=" * 56)
-        print(f"  Пользователь:       {C.c(self.user, C.G)} [USER]")
+        print(f"  Пользователь:       {C.c(self.user, C.G)} [ПОЛЬЗОВАТЕЛЬ]")
         print()
         print(f"  Время:              {now.strftime('%H:%M:%S')}")
         if not s.hide_session:
-            lim = f"{g.daily_limit} мин" if g.daily_limit else self.kernel.t("Без лимита", "No limit")
+            lim = f"{g.daily_limit} мин" if g.daily_limit else self.kernel.t("Без лимита", "Без лимита")
             print(f"  Сессия:             {g.session_str()}")
         print("-" * 56)
         print()
@@ -3592,7 +4250,7 @@ class Shell:
         print("-" * 56)
         if not s.hide_notif and notif_count > 0:
             nb = self.kernel.notifications.format_badge()
-            print(f"  Notif: {nb}")
+            print(f"  Уведомл: {nb}")
             print("-" * 56)
         print("  Введите 'help' для всех доступных команд.")
         print("=" * 56)
@@ -3604,37 +4262,58 @@ class Shell:
 
     def login(self):
         if not self.kernel.um.users:
-            self.kernel.um.create('User', None, '')
+            self.kernel.um.create('User', None, '', role='admin')
             with perm_root():
                 self.kernel.fs.mkdir('/home/User')
+                for d in ['apps/installed', 'apps/data', 'apps/commands', 'sysdata',
+                          'sysdata/trash', 'cache', 'cache/deleted_apps',
+                          'cache/trash_archives']:
+                    self.kernel.fs.mkdir(f'/home/User/{d}')
             self.kernel.save_state()
         users = self.kernel.um.list_users()
+        if len(users) > 10:
+            users = users[:10]
         print("=" * 44)
         print(f"  {self.kernel.t('Выберите пользователя', 'Select User')}")
         print("=" * 44)
-        for u in users:
+        for i, u in enumerate(users):
             info = self.kernel.um.get_public_info(u) or {}
-            hp = "[Argon2id]" if info.get('has_password', True) else "[open]"
-            print(f"  {hp} {u:<16} disk={info.get('disk','C')}:")
+            role = info.get('role', 'user')
+            role_name = self.kernel.um.ROLES.get(role, role)
+            hp = "[Argon2id]" if info.get('has_password', True) else "[без пароля]"
+            print(f"  {i}. {hp} [{role_name}] {u:<12} диск={info.get('disk','C')}:")
         print("-" * 44)
         print()
         fail = {}
         while True:
             try:
-                un = input(C.c("  login: ", C.W)).strip()
-                if not un:
+                sel = input(C.c("  Выберите (0-9): ", C.W)).strip()
+                if not sel:
                     continue
             except (EOFError, KeyboardInterrupt):
                 self.kernel.shutdown()
                 return False
-            if un not in self.kernel.um.users:
-                print(C.c("  User not found.\n", C.R))
+            if not sel.isdigit():
+                print(C.c("  Введите цифру от 0 до 9.", C.R))
                 continue
+            idx = int(sel)
+            if idx < 0 or idx >= len(users):
+                print(C.c("  Профиль не найден.", C.R))
+                continue
+            un = users[idx]
+            
+            # Проверка временного гостя
+            if self.kernel.um.is_temp_guest(un):
+                print(C.c("  Временный гость уже использовался и удалён.", C.R))
+                self.kernel.um.delete(un)
+                self.kernel.fs.delete(f'/home/{un}', recursive=True)
+                continue
+            
             if not self.kernel.um.has_password(un):
                 self._do_login(un)
                 return True
             try:
-                pw = input(C.c("  password: ", C.W))
+                pw = input(C.c("  пароль: ", C.W))
             except (EOFError, KeyboardInterrupt):
                 self.kernel.shutdown()
                 return False
@@ -3656,8 +4335,39 @@ class Shell:
         self.env['HOME'] = info['home']
         self.env['USER'] = un
         self.cwd = info['home']
-        with perm_root():
+        
+        # Увеличиваем счётчик входов
+        self.kernel.um.users[un]['login_count'] = self.kernel.um.users[un].get('login_count', 0) + 1
+        
+        # Если временный гость и это не первый вход - удаляем
+        if self.kernel.um.is_temp_guest(un) and self.kernel.um.users[un].get('login_count', 0) > 1:
+            self.kernel.shutdown()
+            return
+        
+        # Если временный гость и первый вход - помечаем на удаление после выхода
+        if self.kernel.um.is_temp_guest(un):
+            print(C.c(f"  Временный гость. Данные будут удалены после выхода.", C.Y))
+        
+        # Переключаемся на права пользователя для создания его личной структуры
+        old_state = PermissionContext._state()
+        PermissionContext.set(Perm.USER, user=un)
+        try:
             self.kernel.fs.mkdir(self.cwd)
+            for d in ['apps/installed', 'apps/data', 'apps/commands', 'sysdata',
+                      'sysdata/trash', 'cache', 'cache/deleted_apps',
+                      'cache/trash_archives']:
+                self.kernel.fs.mkdir(f'{self.cwd}/{d}')
+        finally:
+            PermissionContext.set(*old_state)
+        
+        # Перезагружаем приложения и команды пользователя (под его правами)
+        if self.kernel.apps:
+            self.kernel.apps.apps.clear()
+            self.kernel.apps.load_user_installed(un)
+        if self.kernel.x2_cmds:
+            self.kernel.x2_cmds.commands.clear()
+            self.kernel.x2_cmds.load_user_commands(un)
+        
         self._oldpwd = {'path': self.cwd, 'disk': self.kernel.fs.current_disk}
         self.desktop()
 
@@ -3669,7 +4379,7 @@ class Shell:
         dk = self.kernel.fs.current_disk
         unread = self.kernel.notifications.count_unread()
         badge = C.c(f"[{unread}] ", C.Y) if unread > 0 else ''
-        dbg = C.c("[DBG] ", C.Y) if self.kernel.settings.debug_mode else ''
+        dbg = C.c("[ОТЛ] ", C.Y) if self.kernel.settings.debug_mode else ''
         return (f"{badge}{dbg}{C.c(dk + ':', C.Y)}{C.c(self.user, C.G)}@"
                 f"{C.c(self.kernel.hostname, C.BL)}:{C.c(w, C.CY)}$ ")
 
@@ -3791,6 +4501,7 @@ class Shell:
             'whoami': lambda _a: print(f"  {self.user}"),
             'id': self.c_id, 'su': self.c_su,
             'useradd': self.c_useradd, 'userdel': self.c_userdel,
+            'moduser': self.c_moduser, 'role': self.c_role, 'policy': self.c_policy,
             'passwd': self.c_passwd, 'users': self.c_users,
             'date': lambda _a: print(f"  {self.kernel.get_now().strftime('%Y-%m-%d %H:%M:%S')}"),
             'uptime': lambda _a: print(f"  Session: {self.kernel.guardian.session_str()}"),
@@ -3814,6 +4525,7 @@ class Shell:
             'shutdown': self.c_shutdown, 'reboot': self.c_reboot,
             'exit': self.c_exit, 'logout': self.c_exit,
             'save': self.c_save,
+            'x2cmd': self.c_x2cmd,
         }
 
     def _exec(self, line):
@@ -3839,6 +4551,12 @@ class Shell:
                 if self.kernel.settings.debug_mode and self.kernel.debug:
                     self.kernel.debug.log('command_error', str(e),
                                           tb_module.format_exc(), f'cmd:{cmd}', line)
+        elif self.kernel.x2_cmds and cmd in self.kernel.x2_cmds.commands:
+            ok, err = self.kernel.x2_cmds.execute(cmd, self, args)
+            if not ok:
+                print(C.c(f"  {err}", C.R))
+            self._do_desktop()
+            return
         elif self.kernel.apps and cmd in self.kernel.apps.apps:
             ok, err = self.kernel.apps.run(cmd, self)
             if not ok:
@@ -3902,7 +4620,7 @@ class Shell:
 
     def c_perms(self, _a):
         print("=" * 62)
-        print("  Система прав PyOS Nexus v19.2")
+        print("  Система прав PyOS Nexus v19.3")
         print("=" * 62)
         print(f"  ROOT    — ядро. Недостижим для пользователя.")
         print(f"  USER    — вы [{C.c(self.user, C.G)}]. Запрет: /sysdata,")
@@ -4029,16 +4747,18 @@ class Shell:
             h = self.env.get('HOME', '/')
             p = h if p == '~' else h.rstrip('/') + '/' + p[2:]
         ex, rest = self.kernel.fs.parse_disk_prefix(p)
-        disk = self.kernel.fs.current_disk
+        disk_before = self.kernel.fs.current_disk
+        disk = disk_before
         if ex:
             p = rest
             disk = ex
+            self.kernel.fs.current_disk = disk
         r, _ = self.kernel.fs.resolve(p, self.cwd)
         if self.kernel.fs.is_dir(r):
             self._oldpwd = {'path': self.cwd, 'disk': self.kernel.fs.current_disk}
-            self.kernel.fs.current_disk = disk
             self.cwd = r
         else:
+            self.kernel.fs.current_disk = disk_before
             print(C.c(f"  Не найдено/запрещено: {args[0]}", C.R))
 
     def c_pwd(self, _a):
@@ -4148,8 +4868,14 @@ class Shell:
         info = self.kernel.um.get_public_info(u)
         if not info:
             print(C.c(f"  Нет: {u}", C.R)); return
+        role = self.kernel.um.get_user_role(u)
+        role_name = self.kernel.um.ROLES.get(role, role)
+        policies = ", ".join([k for k, v in self.kernel.um.policies.get(u, {}).items() if v])
         print(f"  uid={info['uid']}({u}) disk={info.get('disk','C')}: "
-              f"pw={'Argon2id' if info.get('has_password',True) else 'no'}")
+              f"роль={role_name} ({role})")
+        print(f"  пароль={'Argon2id' if info.get('has_password',True) else 'отсутствует'}")
+        if policies:
+            print(f"  политики: {policies}")
 
     def c_su(self, args):
         if not args:
@@ -4166,25 +4892,34 @@ class Shell:
 
     def c_useradd(self, args):
         if not args:
-            print("  useradd <name>"); return
+            print("  useradd <name> [user|admin|guest]"); return
         if not self._check_uac_root_action(f"Создание нового пользователя '{args[0]}'"):
             return
         name = args[0]
         if not name.isalnum():
             print(C.c("  Только буквы и цифры!", C.R)); return
+        role = 'user'
+        if len(args) > 1 and args[1] in ('user', 'admin', 'guest'):
+            role = args[1]
+        elif len(args) > 1:
+            print(C.c("  Роль должна быть: user, admin или guest", C.R)); return
         pw = None
         hint = ''
         if input(f"  Пароль для {name}? (y/n): ").strip().lower() in ('y', 'yes', 'да'):
             pw = input("  Пароль: ")
             if input("  Подсказка? (y/n): ").strip().lower() in ('y', 'yes', 'да'):
                 hint = input("  Подсказка: ")
-        ok, err = self.kernel.um.create(name, pw, hint)
+        ok, err = self.kernel.um.create(name, pw, hint, role=role)
         if ok:
             with perm_root():
                 for d in [f'/home/{name}', f'/home/{name}/Desktop',
-                          f'/home/{name}/Documents']:
+                          f'/home/{name}/Documents',
+                          f'/home/{name}/apps/installed', f'/home/{name}/apps/data',
+                          f'/home/{name}/apps/commands', f'/home/{name}/sysdata',
+                          f'/home/{name}/sysdata/trash', f'/home/{name}/cache',
+                          f'/home/{name}/cache/deleted_apps', f'/home/{name}/cache/trash_archives']:
                     self.kernel.fs.mkdir(d)
-            print(C.c(f"  Создан '{name}'", C.G))
+            print(C.c(f"  Создан '{name}' (роль: {role})", C.G))
             self.kernel.save_state()
         else:
             print(C.c(f"  {err}", C.R))
@@ -4213,6 +4948,56 @@ class Shell:
         else:
             print(C.c("  Ошибка", C.R))
 
+    def c_moduser(self, args):
+        if not args:
+            print("  moduser <name> [role=user|admin|guest]"); return
+        if not self._check_uac_root_action(f"Изменение пользователя '{args[0]}'"):
+            return
+        name = args[0]
+        if name not in self.kernel.um.users:
+            print(C.c("  Пользователь не найден", C.R)); return
+        if len(args) > 1 and args[1] in ('user', 'admin', 'guest'):
+            self.kernel.um.users[name]['role'] = args[1]
+            self.kernel.um.policies[name] = self.kernel.um._default_policy(args[1])
+            print(C.c(f"  Роль '{name}' изменена на '{args[1]}'", C.G))
+            self.kernel.save_state()
+        else:
+            print(C.c("  Роль должна быть: user, admin или guest", C.R))
+
+    def c_role(self, args):
+        if not args:
+            print("  role <name>"); return
+        name = args[0]
+        if name not in self.kernel.um.users:
+            print(C.c("  Пользователь не найден", C.R)); return
+        role = self.kernel.um.get_user_role(name)
+        print(f"  Пользователь '{name}' имеет роль: {role} ({self.kernel.um.ROLES.get(role, role)})")
+
+    def c_policy(self, args):
+        if not args:
+            print("  policy <name> <key> [on|off]"); return
+        if not self._check_uac_root_action("Изменение политик пользователя"):
+            return
+        name = args[0]
+        if name not in self.kernel.um.users:
+            print(C.c("  Пользователь не найден", C.R)); return
+        if len(args) < 2:
+            print("  Доступные политики:")
+            for k, v in self.kernel.um.POLICY_KEYS.items():
+                val = self.kernel.um.get_policy(name, k)
+                print(f"    {k} ({v}): {'on' if self.kernel.um.get_policy(name, k) else 'off'}")
+            return
+        key = args[1]
+        if key not in self.kernel.um.POLICY_KEYS:
+            print(C.c(f"  Неизвестная политика: {key}", C.R)); return
+        if len(args) > 2 and args[2] in ('on', 'off', '1', '0', 'true', 'false'):
+            val = args[2] in ('on', '1', 'true')
+            self.kernel.um.set_policy(name, key, val)
+            print(C.c(f"  Политика '{key}' для '{name}' установлена: {'on' if val else 'off'}", C.G))
+            self.kernel.save_state()
+        else:
+            print(C.c(f"  Текущее значение '{key}' для '{name}': {'on' if self.kernel.um.get_policy(name, key) else 'off'}", C.Y))
+
     def c_passwd(self, args):
         t = args[0] if args else self.user
         if t != self.user:
@@ -4240,8 +5025,11 @@ class Shell:
             info = self.kernel.um.get_public_info(u) or {}
             cur = " <-- вы" if u == self.user else ""
             hp = "Argon2id" if info.get('has_password', True) else "открыт"
+            role = info.get('role', 'user')
+            role_name = self.kernel.um.ROLES.get(role, role)
             print(f"  {u:<14} uid={info.get('uid','?')} [{hp}] "
-                  f"диск={info.get('disk','C')}: {info.get('created','?')[:10]}{cur}")
+                  f"роль={role_name} диск={info.get('disk','C')}: "
+                  f"{info.get('created','?')[:10]}{cur}")
         print("-" * 56)
         print(f"  Всего: {len(self.kernel.um.users)}")
         print("=" * 56)
@@ -4258,6 +5046,7 @@ class Shell:
             print("  Укажите файл скрипта.")
             return
         X3Runner.execute_file(self, args[0], args[1:], fast_mode=fast_mode)
+        self._do_desktop()
 
     def c_newx3(self, args):
         if not args:
@@ -4542,7 +5331,7 @@ class Shell:
                 if not any_c:
                     print(C.c("  Все в норме.", C.G))
                 input(C.c("\n  Enter...", C.DIM))
-            elif ch == '4':
+            elif ch == '3':
                 if self._ui_uninstall_center():
                     return
         self._do_desktop()
@@ -4699,12 +5488,13 @@ class Shell:
 
             print("-" * 66)
             print("  S. Поиск приложений")
+            print("  C. Команды из GitHub Commands")
             print("  R. Обновить список (сбросить кэш)")
             print("  0. Назад")
             print("=" * 66)
             
             try:
-                choice = input(C.c("  Выберите действие или номер приложения: ", C.W)).strip()
+                choice = input(C.c("  Выберите приложение, команду или действие: ", C.W)).strip()
             except (EOFError, KeyboardInterrupt):
                 break
 
@@ -4714,6 +5504,10 @@ class Shell:
             if choice.lower() == 'r':
                 print(C.c("  Обновление кэша...", C.CY))
                 self.kernel.guardian.fetch_store_apps(force_refresh=True)
+                continue
+
+            if choice.lower() == 'c':
+                self._ui_command_store()
                 continue
 
             if choice.lower() == 's':
@@ -4766,9 +5560,34 @@ class Shell:
         app_rel_path = target_ver
 
         print(C.c(f"\n  Загрузка {app_rel_path}...", C.CY))
+        downloaded = False
         try:
             data = self.kernel.guardian.download_app_file(app_rel_path)
             target_filename = Path(target_ver).name
+            
+            # Show detailed app info from x4 file BEFORE saving
+            try:
+                app_content = data.decode('utf-8', errors='replace') if isinstance(data, bytes) else str(data)
+                p = X4Parser.parse(app_content)
+                info = p.get('info', {})
+                print()
+                print("  " + "=" * 56)
+                print(f"  Название:      {info.get('name', 'Неизвестно')}")
+                print(f"  Версия:        {info.get('version', '?')}")
+                print(f"  Описание:      {info.get('description', 'Нет описания')}")
+                print(f"  Автор:         {info.get('author', 'Неизвестно')}")
+                print(f"  Тег:           {info.get('tag', 'Неизвестно')}")
+                print(f"  Фоновый режим: {info.get('background', 'false')}")
+                print("  " + "=" * 56)
+                print()
+            except Exception:
+                pass
+            
+            confirm = input(C.c("  Установить это приложение? (y/n): ", C.W)).strip().lower()
+            if confirm not in ('y', 'yes', 'да', 'д'):
+                print(C.c("  Установка отменена.", C.Y))
+                input(C.c("\n  Enter...", C.DIM))
+                return
             
             with perm_root():
                 self.kernel.fs.mkdir('/apps/store')
@@ -4776,12 +5595,111 @@ class Shell:
                     self.kernel.fs.write_bytes(f'/apps/store/{target_filename}', data)
                 else:
                     self.kernel.fs.write_file(f'/apps/store/{target_filename}', str(data))
+                downloaded = True
 
             ok_i, msg = self.kernel.apps.install(target_filename, home_dir=self.env['HOME'])
             if ok_i:
                 print(C.c(f"  {msg}", C.G + C.B))
             else:
                 print(C.c(f"  Ошибка установки: {msg}", C.R))
+                if downloaded:
+                    self.kernel.fs.delete(f'/apps/store/{target_filename}')
+        except Exception as e:
+            print(C.c(f"  Ошибка скачивания: {e}", C.R))
+
+        input(C.c("\n  Enter...", C.DIM))
+
+
+    def _ui_command_store(self):
+        """Скачивание команд из папки Commands на GitHub."""
+        while True:
+            clear()
+            print("=" * 66)
+            print("  📥 Центр команд PyOS (GitHub Commands)")
+            print("=" * 66)
+            print("  [Подключение к репозиторию GitHub...]")
+
+            ok, cmds = self.kernel.guardian.fetch_commands()
+            if not ok:
+                print(C.c(f"  Ошибка загрузки списка команд: {cmds}", C.R))
+                input(C.c("\n  Enter...", C.DIM))
+                break
+
+            print("-" * 66)
+            if not cmds:
+                print(C.c("  В репозитории GitHub пока нет команд.", C.Y))
+            else:
+                for idx, cmd_name in enumerate(cmds, 1):
+                    installed = " [Установлено]" if cmd_name in (self.kernel.x2_cmds.commands if self.kernel.x2_cmds else {}) else ""
+                    print(f"  {idx:>2}. {cmd_name:<25}{C.c(installed, C.G)}")
+
+            print("-" * 66)
+            print("  R. Обновить список (сбросить кэш)")
+            print("  0. Назад")
+            print("=" * 66)
+
+            try:
+                choice = input(C.c("  Выберите действие или номер команды: ", C.W)).strip()
+            except (EOFError, KeyboardInterrupt):
+                break
+
+            if choice in ('0', 'q', 'exit', ''):
+                break
+            if choice.lower() == 'r':
+                print(C.c("  Обновление кэша...", C.CY))
+                self.kernel.guardian.fetch_commands(force_refresh=True)
+                continue
+            if choice.isdigit() and 1 <= int(choice) <= len(cmds):
+                selected_cmd = cmds[int(choice) - 1]
+                self._download_and_install_command(selected_cmd)
+
+        self._do_desktop()
+
+    def _download_and_install_command(self, cmd_name):
+        clear()
+        print("=" * 60)
+        print(f"  Команда: {C.c(cmd_name, C.G + C.B)}")
+        print("=" * 60)
+        print("  Скачивание команды из GitHub Commands...")
+
+        try:
+            data = self.kernel.guardian.download_command_file(cmd_name)
+            target_filename = Path(cmd_name).name
+            
+            # Show detailed command info from x2 file BEFORE saving
+            try:
+                cmd_content = data.decode('utf-8', errors='replace') if isinstance(data, bytes) else str(data)
+                p = X4Parser.parse(cmd_content)
+                info = p.get('info', {})
+                print()
+                print("  " + "=" * 56)
+                print(f"  Название:      {info.get('name', 'Неизвестно')}")
+                print(f"  Версия:        {info.get('version', '?')}")
+                print(f"  Описание:      {info.get('description', 'Нет описания')}")
+                print(f"  Автор:         {info.get('author', 'Неизвестно')}")
+                print(f"  Тег:           {info.get('tag', 'Неизвестно')}")
+                print(f"  Фоновый режим: {info.get('background', 'false')}")
+                print("  " + "=" * 56)
+                print()
+            except Exception:
+                pass
+            
+            confirm = input(C.c("  Установить эту команду? (y/n): ", C.W)).strip().lower()
+            if confirm not in ('y', 'yes', 'да', 'д'):
+                print(C.c("  Установка отменена.", C.Y))
+                input(C.c("\n  Enter...", C.DIM))
+                return
+            
+            # Пишем без perm_root - полагаемся на текущие права (USER при вызове из шелла)
+            self.kernel.fs.mkdir('/apps/commands')
+            self.kernel.fs.write_bytes(f'/apps/commands/{target_filename}', data)
+
+            ok_i, msg = self.kernel.x2_cmds.install_command(f'/apps/commands/{target_filename}')
+            if ok_i:
+                print(C.c(f"  {msg}", C.G + C.B))
+            else:
+                print(C.c(f"  Ошибка установки: {msg}", C.R))
+                self.kernel.fs.delete(f'/apps/commands/{target_filename}')
         except Exception as e:
             print(C.c(f"  Ошибка скачивания: {e}", C.R))
 
@@ -5046,6 +5964,32 @@ class Shell:
                 self.kernel.fs.create_disk(l)
             print(C.c(f"  Диск {l}: создан", C.G))
             self.kernel.save_state()
+        elif args[0] in ('rm', 'remove', 'del', 'delete'):
+            if len(args) < 2:
+                print("  disk rm <буква>"); return
+            l = args[1].upper()
+            if len(l) != 1 or not l.isalpha():
+                print(C.c("  A-Z", C.R)); return
+            if l not in self.kernel.fs.get_disks():
+                print(C.c(f"  {l}: такого диска нет", C.R)); return
+            if l == 'C':
+                print(C.c("  Нельзя удалить системный диск C:", C.R)); return
+            if l == self.kernel.fs.current_disk:
+                print(C.c("  Нельзя удалить текущий диск", C.R)); return
+            if not self._check_uac_root_action(f"Удаление виртуального диска {l}:"):
+                return
+            dp = self.kernel.fs.hostname_dir / l
+            if dp.exists():
+                try:
+                    # Проверяем, что диск пустой
+                    items = list(dp.iterdir())
+                    if items:
+                        print(C.c(f"  Диск {l}: не пуст, нельзя удалить", C.R)); return
+                    dp.rmdir()
+                    print(C.c(f"  Диск {l}: удалён", C.G))
+                except (OSError, PermissionError) as e:
+                    print(C.c(f"  Ошибка удаления диска {l}: {e}", C.R))
+            self.kernel.save_state()
 
     def c_edit(self, args):
         if not args:
@@ -5096,13 +6040,13 @@ class Shell:
             print(f"  Настройки — PyOS {Kernel.VERSION}")
             print("=" * 52)
             print(f"  Язык:         {s.lang.upper()}")
-            print(f"  AutoBackup:   {C.c(s.auto_backup, C.CY)}")
+            print(f"  Автобэкап:   {C.c(s.auto_backup, C.CY)}")
             print(f"  UAC Контроль: {C.c(s.get_uac_name(), C.CY)}")
             print(f"  X3 Скорость:  {C.c(s.x3_speed, C.CY)}")
             print(f"  Время:        {now.strftime('%H:%M:%S')}")
             print(f"  Дата:         {now.strftime('%Y-%m-%d')}")
-            print(f"  Debug:        {C.c('ON',C.Y) if s.debug_mode else C.c('OFF',C.DIM)}")
-            print(f"  Smart Memory: {C.c('ON',C.G) if s.smart_memory else C.c('OFF',C.DIM)}")
+            print(f"  Отладка:        {C.c('ВКЛ',C.Y) if s.debug_mode else C.c('ВЫКЛ',C.DIM)}")
+            print(f"  Smart Memory: {C.c('ВКЛ',C.G) if s.smart_memory else C.c('ВЫКЛ',C.DIM)}")
             print("-" * 52)
             print("  settings lang ru|en")
             print("  settings uac 1|2|3|4")
@@ -5144,11 +6088,11 @@ class Shell:
                 return
             if args[1] == 'on':
                 s.debug_mode = True
-                print(C.c("  Debug ON", C.Y))
+                print(C.c("  Отладка ВКЛ", C.Y))
                 self.kernel.save_state()
             elif args[1] == 'off':
                 s.debug_mode = False
-                print(C.c("  Debug OFF", C.G))
+                print(C.c("  Отладка ВЫКЛ", C.G))
                 self.kernel.save_state()
 
     def c_alias(self, args):
@@ -5268,6 +6212,22 @@ class Shell:
             return
         cmd = args[0].lower()
         if cmd not in self.MAN_PAGES:
+            if self.kernel.x2_cmds and cmd in self.kernel.x2_cmds.commands:
+                info = self.kernel.x2_cmds.get_man(cmd)
+                if info:
+                    print("=" * 72)
+                    print(f"  РУКОВОДСТВО: {C.c(cmd.upper(), C.G + C.B)}")
+                    print("=" * 72)
+                    print(C.c("  НАЗВАНИЕ:", C.Y + C.B))
+                    print(f"      {cmd} — {info.get('desc', 'Без описания')}")
+                    print()
+                    print(C.c("  СИНТАКСИС:", C.Y + C.B))
+                    print(f"      {info.get('synopsis', cmd)}")
+                    print()
+                    print(C.c("  ОПИСАНИЕ:", C.Y + C.B))
+                    print(f"      {info.get('details', 'Нет описания')}")
+                    print("=" * 72)
+                    return
             print(C.c(f"  '{cmd}' не найден.", C.R))
             m = difflib.get_close_matches(cmd, list(self.MAN_PAGES.keys()), n=3, cutoff=0.5)
             if m:
@@ -5304,8 +6264,8 @@ class Shell:
             ('Файлы', 'ls cd pwd mkdir rmdir touch rm cat cp mv rename find grep wc tree du df'),
             ('Автоматизация x3', 'x3 [--fast] <файл.x3> [args...] | newx3 <имя>'),
             ('Корзина', 'trash (list, empty, rm <id>, restore <id>)'),
-            ('Пользователи', 'whoami id su useradd userdel passwd users'),
-            ('Система', 'date uptime hostname sysinfo reboot shutdown perms uac'),
+            ('Пользователи', 'whoami id su useradd userdel moduser role policy passwd users'),
+            ('Система', 'date uptime hostname sysinfo reboot shutdown perms uac x2cmd'),
             ('Оболочка', 'echo clear desktop history alias export env edit save reload'),
             ('Бэкапы', 'backup (create, list, restore, rm)'),
             ('Кэш', 'cache (list, clear, cat, rm)'),
@@ -5339,15 +6299,74 @@ class Shell:
         if self.kernel.apps:
             self.kernel.apps.apps.clear()
             self.kernel.apps.load_installed()
+        if self.kernel._fs_checker:
+            self.kernel._fs_checker.stop()
+        self.kernel._fs_checker = FSHealthChecker(self.kernel.fs, self.kernel)
+        self.kernel._fs_checker.start()
+        self.kernel._start_hourly_autobackup_worker()
         clear()
         self.kernel.boot_anim()
         self._do_desktop()
+
+    def c_x2cmd(self, args):
+        if not self.kernel.x2_cmds:
+            print(C.c("  X2-команды недоступны", C.R)); return
+        if not args:
+            print("  x2cmd <list | install <файл.x2> | remove <имя> | man <имя> | run <имя> [арг...]")
+            if self.kernel.x2_cmds.commands:
+                print("  Установленные команды:", ', '.join(sorted(self.kernel.x2_cmds.commands.keys())))
+            return
+        act = args[0].lower()
+        if act == 'list':
+            if not self.kernel.x2_cmds.commands:
+                print("  Нет установленных X2-команд")
+            else:
+                for name in sorted(self.kernel.x2_cmds.commands):
+                    info = self.kernel.x2_cmds.commands[name]['info']
+                    print(f"  {name:<16} {info.get('desc','')}")
+        elif act == 'install':
+            if len(args) < 2:
+                print("  x2cmd install <файл.x2>"); return
+            ok, msg = self.kernel.x2_cmds.install_command(args[1], self.cwd)
+            print(C.c(f"  {msg}", C.G if ok else C.R))
+        elif act == 'remove':
+            if len(args) < 2:
+                print("  x2cmd remove <имя>"); return
+            ok, msg = self.kernel.x2_cmds.remove_command(args[1])
+            print(C.c(f"  {msg}", C.G if ok else C.R))
+        elif act == 'man':
+            if len(args) < 2:
+                print("  x2cmd man <имя>"); return
+            info = self.kernel.x2_cmds.get_man(args[1])
+            if info:
+                print("=" * 72)
+                print(f"  РУКОВОДСТВО: {C.c(args[1].upper(), C.G + C.B)}")
+                print("=" * 72)
+                print(C.c("  НАЗВАНИЕ:", C.Y + C.B))
+                print(f"      {args[1]} — {info.get('desc','Без описания')}")
+                print()
+                print(C.c("  СИНТАКСИС:", C.Y + C.B))
+                print(f"      {info.get('synopsis', args[1])}")
+                print()
+                print(C.c("  ОПИСАНИЕ:", C.Y + C.B))
+                print(f"      {info.get('details','Нет описания')}")
+                print("=" * 72)
+            else:
+                print(C.c("  Команда не найдена", C.R))
+        elif act == 'run':
+            if len(args) < 2:
+                print("  x2cmd run <имя> [арг...]"); return
+            ok, err = self.kernel.x2_cmds.execute(args[1], self, args[2:])
+            if not ok:
+                print(C.c(f"  {err}", C.R))
+        else:
+            print(C.c("  Неизвестное действие x2cmd", C.R))
 
     def c_exit(self, _a):
         self.kernel.shutdown()
 
 
-# ═══════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════
 #  MAIN
 # ═══════════════════════════════════════════════════════════════
 def main():
