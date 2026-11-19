@@ -5572,10 +5572,11 @@ class Shell:
             print("  1. Проверить обновления на GitHub")
             print("  2. Оптимизация памяти приложений")
             print("  3. Деинсталляция PyOS")
+            print("  4. Посмотреть что нового (changelog)")
             print("  0. Назад")
             print("=" * 56)
             try:
-                ch = input(C.c("  Выберите (0-3): ", C.W)).strip()
+                ch = input(C.c("  Выберите (0-4): ", C.W)).strip()
             except (EOFError, KeyboardInterrupt):
                 break
             if ch in ('0', 'q', 'exit', ''):
@@ -5597,6 +5598,8 @@ class Shell:
             elif ch == '3':
                 if self._ui_uninstall_center():
                     return
+            elif ch == '4':
+                self.c_changelog([])
         self._do_desktop()
 
     def _ui_github_update(self):

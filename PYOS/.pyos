@@ -1,9 +1,0 @@
-{
-  "salt": "6f6d2abbf12947136550eb124d677d87",
-  "hash": "9a37bdc1039148f7f615f009aa6b6069ba7b4e0df86ff140fee5fc7ff73dc309",
-  "algorithm": "Argon2id+salt",
-  "version": "21.0",
-  "build": "14.11.2026",
-  "filename": "v22p22.py",
-  "updated": "2026-11-19T20:42:50.984558"
-}
