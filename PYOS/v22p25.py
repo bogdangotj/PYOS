@@ -433,7 +433,7 @@ def compute_file_hash(filepath) -> str:
         return ""
 
 
-def save_code_hash(sp, cur_hash=None, version='21.0', build='14.11.2026'):
+def save_code_hash(sp, cur_hash=None, version='22.3', build='20.11.2026'):
     if cur_hash is None:
         cur_hash = compute_file_hash(sp)
     _save_pyos_meta(sp, {
