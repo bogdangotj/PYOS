@@ -1,7 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-#  PyOS v22.3 "Nexus" — build 20.11.2026
 #  Kostyl Studios | Argon2id+salt | Root/User/Program | UAC + GitHub AppStore
-#  v21: Safety, виртуальные системные приложения, исправления прав и песочницы
 # ═══════════════════════════════════════════════════════════════
 from contextlib import contextmanager, redirect_stdout
 import ast
@@ -37,6 +35,12 @@ except ImportError:
     print("\n[PyOS] Требуется argon2-cffi: pip install argon2-cffi")
     sys.exit(1)
 
+
+# ══════════════════════════════════════════════════════════════
+#  ВЕРСИЯ (единая точка правки)
+# ═══════════════════════════════════════════════════════════════
+PYOS_VERSION = '22.3'
+PYOS_BUILD = '20.11.2026'
 
 # ═══════════════════════════════════════════════════════════════
 #  ПРАВА
@@ -433,12 +437,11 @@ def compute_file_hash(filepath) -> str:
         return ""
 
 
-def save_code_hash(sp, cur_hash=None, version='22.3', build='20.11.2026'):
+def save_code_hash(sp, cur_hash=None, version=PYOS_VERSION, build=PYOS_BUILD):
     if cur_hash is None:
         cur_hash = compute_file_hash(sp)
     _save_pyos_meta(sp, {
         'hash': cur_hash,
-        'algorithm': 'Argon2id+salt',
         'version': version,
         'build': build,
         'filename': sp.name,
@@ -495,8 +498,8 @@ class BackupManager:
         sp = get_script_path()
         salt = _load_or_create_salt(sp)
         manifest = {'created': datetime.datetime.now().isoformat(),
-                                'version': kernel.VERSION if kernel else '21.0',
-                                'build': kernel.BUILD if kernel else '14.11.2026',
+                                'version': kernel.VERSION if kernel else PYOS_VERSION,
+                                'build': kernel.BUILD if kernel else PYOS_BUILD,
                                 'script_name': sp.name,
                                 'script_hash': compute_file_hash(sp),
                                 'salt': salt.hex(),
@@ -3842,8 +3845,8 @@ class HistoryManager:
 #  ЯДРО
 # ═══════════════════════════════════════════════════════════════
 class Kernel:
-    VERSION = '22.3'
-    BUILD = '20.11.2026'
+    VERSION = PYOS_VERSION
+    BUILD = PYOS_BUILD
     COMPANY = 'Kostyl Studios'
 
     def __init__(self):
@@ -4078,12 +4081,15 @@ class Kernel:
             license_text = self.safety.download_license(self.settings.lang)
         except Exception:
             pass
+        if not license_text:
+            # Fallback: встроенный текст MIT License если нет интернета или файла на GitHub
+            license_text = self._builtin_license_text(self.settings.lang)
         if license_text:
             print(license_text[:2000])
             if len(license_text) > 2000:
                 print(C.c(f"  ... (лицензия обрезана, всего {len(license_text)} символов)", C.DIM))
         else:
-            print(C.c("  Не удалось скачать лицензию с GitHub (нет интернета?).", C.Y))
+            print(C.c("  Не удалось загрузить лицензию MIT.", C.Y))
             print(C.c("  Продолжая setup, вы принимаете условия MIT License.", C.Y))
         print()
         print("=" * 46)
@@ -4129,6 +4135,53 @@ class Kernel:
                     pass
         except Exception:
             pass
+
+    def _builtin_license_text(self, lang='en'):
+        """Встроенный текст лицензии MIT (fallback если нет интернета)."""
+        if lang == 'ru':
+            return """MIT License
+
+Copyright (c) 2026 Kostyl Studios
+
+Разрешается бесплатно, безвозмездно и без ограничений любым лицам, получившим копию
+этого программного обеспечения и сопутствующих файлов документации (далее — «Программное
+обеспечение»), использовать, копировать, изменять, объединять, публиковать, распространять,
+сублицензировать и/или продавать копии Программного обеспечения, а также разрешать лицам,
+которым предоставляется Программное обеспечение, делать то же самое, при соблюдении
+следующих условий:
+
+Вышеуказанное уведомление об авторских правах и данное уведомление о разрешении должны
+включаться во все копии или значимые части Программного обеспечения.
+
+ПРОГРАММНОЕ ОБЕСПЕЧЕНИЕ ПРЕДОСТАВЛЯЕТСЯ «КАК ЕСТЬ», БЕЗ КАКИХ-ЛИБО ГАРАНТИЙ, ЯВНЫХ
+ИЛИ ПОДРАЗУМЕВАЕМЫХ, ВКЛЮЧАЯ, НО НЕ ОГРАНИЧИВАЯСЬ, ГАРАНТИЯМИ ТОВАРНОЙ ПРИГОДНОСТИ,
+СООТВЕТСТВИЯ ПО ОТДЕЛЬНЫМ ЦЕЛЯМ И НЕНАРУШЕНИЯ ПРАВ ТРЕТЬИХ ЛИЦ. НИ ПРИ КАКИХ
+ОБСТОЯТЕЛЬСТВАХ АВТОРЫ ИЛИ ПРАВООБЛАДАТЕЛИ НЕ НЕСУТ ОТВЕТСТВЕННОСТИ ЗА ЛЮБЫЕ ПРЕТЕНЗИИ,
+УБЫТКИ ИЛИ ДРУГИЙ ИЗБЫТОЧНЫЙ УЩЕРБ, БЫВШИЙ В РЕЗУЛЬТАТЕ ИСПОЛЬЗОВАНИЯ ПРОГРАММНОГО
+ОБЕСПЕЧЕНИЯ, ДРУГИХ СДЕЛОК С НИМИ ИЛИ ИНЫМИ ДЕЙСТВИЯМИ, ВОЗНИКШИМИ В СВЯЗИ С
+ПРОГРАММНЫМ ОБЕСПЕЧЕНИЕМ ИЛИ ИСПОЛЬЗОВАНИЕМ ИЛИ ИНЫМИ ДЕЙСТВИЯМИ С НИМ."""
+        else:
+            return """MIT License
+
+Copyright (c) 2026 Kostyl Studios
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE."""
 
     def _auto_setup(self):
         print(C.c(f"\n  [Auto Setup]", C.CY))
@@ -4207,7 +4260,7 @@ class Kernel:
                 self.run_smart_memory_cleanup()
                 st = {'hostname': self.hostname, 'base_path': self.base_path,
                       'version': self.VERSION, 'build': self.BUILD,
-                      'company': self.COMPANY, 'hash_algo': 'Argon2id+salt',
+                      'company': self.COMPANY,
                       'users': {'users': self.um.users},
                       'user_manager': self.um.to_state(),
                       'safety': {'daily_limit': self.safety.daily_limit,
@@ -4993,7 +5046,7 @@ class Shell:
 
     def c_perms(self, _a):
         print("=" * 62)
-        print("  Система прав PyOS Safety v21.0")
+        print(f"  Система прав PyOS Safety v{self.kernel.VERSION}")
         print("=" * 62)
         print(f"  ROOT    — ядро. Недостижим для пользователя.")
         print(f"  USER    — вы [{C.c(self.user, C.G)}]. Запрет: /sysdata,")
