@@ -1,0 +1,36 @@
+[INFO]
+name: ping
+description: Сетевой пинг (демо-симуляция задержки ответа)
+version: 1.0.0
+author: Kostyl Studios
+tag: Utility
+background: false
+
+[CODE]
+color("=== Сетевой пинг (демо) ===", "cyan")
+print()
+
+import time
+
+hosts = ["github.com", "python.org", "google.com", "ya.ru", "localhost"]
+count = int(args[0]) if args and args[0].isdigit() else 4
+
+for i in range(count):
+    host = hosts[i % len(hosts)]
+    delay = random.randint(5, 85)
+    print(f"  Ответ от {host}: задержка {delay}мс")
+    time.sleep(0.3)
+
+print()
+print(f"  Пинг завершён. Пакетов: {count}")
+[/CODE]
+
+[DATA]
+folder: /apps/data/ping
+[/DATA]
+
+[OTHER]
+Free License -- Kostyl Studios
+[/OTHER]
+
+[END]

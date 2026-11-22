@@ -1,0 +1,31 @@
+[INFO]
+name: backup
+description: Информация о резервных копиях PyOS
+version: 1.0.0
+author: Kostyl Studios
+tag: System
+background: false
+
+[CODE]
+color("=== Резервные копии PyOS ===", "cyan")
+print()
+print("  Используйте команду 'backup' в оболочке PyOS для управления копиями:")
+print()
+print("    backup list          - список резервных копий")
+print("    backup create [имя]  - создать копию")
+print("    backup restore <n>   - восстановить из копии")
+print("    backup rm <n>        - удалить копию")
+print()
+print("  Копии хранятся в папке backups рядом с PyOS.")
+print("  Формат: LZMA Extreme + Argon2id+salt.")
+[/CODE]
+
+[DATA]
+folder: /apps/data/backup
+[/DATA]
+
+[OTHER]
+Free License -- Kostyl Studios
+[/OTHER]
+
+[END]

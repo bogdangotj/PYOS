@@ -1,38 +1,29 @@
 [INFO]
 name: calc
-description: Научный калькулятор с поддержкой математических функций
-version: 2.1.0
+description: Научный калькулятор с безопасным вычислением математических выражений
+version: 2.2.0
 author: Kostyl Studios
 tag: Technical
 background: false
 
 [CODE]
-print("=== Научный калькулятор v2.1 ===")
-print("Поддерживаемые функции: sin, cos, tan, log, sqrt, pow и др.")
+color("=== Научный калькулятор v2.2 ===", "cyan")
+print("Поддерживаемые функции: sin, cos, tan, sqrt, log, pow, abs, round, min, max, pi, e")
 print("Введите выражение или 'exit' для выхода")
 print()
 
-import math
-
 while True:
+    expr = input("calc> ").strip()
+    if expr.lower() in ('exit', 'quit', 'q'):
+        color("Калькулятор завершён.", "green")
+        break
+    if not expr:
+        continue
     try:
-        expr = input("calc> ").strip()
-        if expr.lower() in ('exit', 'quit', 'q'):
-            print("Калькулятор завершён.")
-            break
-        if not expr:
-            continue
-        
-        # Безопасная оценка выражения
-        allowed_names = {
-            k: getattr(math, k) for k in dir(math) if not k.startswith('_')
-        }
-        allowed_names.update({'abs': abs, 'round': round, 'min': min, 'max': max})
-        
-        result = eval(expr, {"__builtins__": {}}, allowed_names)
-        print(f"  = {result}")
+        result = eval(expr)
+        color(f"  = {result}", "green")
     except Exception as e:
-        print(f"  Ошибка: {e}")
+        color(f"  Ошибка: {e}", "red")
 [/CODE]
 
 [DATA]

@@ -1,0 +1,33 @@
+[INFO]
+name: info
+description: Подробная информация о системе и окружении
+version: 1.0.0
+author: Kostyl Studios
+tag: System
+background: false
+
+[CODE]
+color("=== Информация о системе ===", "cyan")
+print()
+print(f"  ОС:               PyOS v{kernel.VERSION} build {kernel.BUILD}")
+print(f"  Компания:         {kernel.COMPANY}")
+print(f"  Компьютер:        {kernel.hostname}")
+print(f"  Пользователь:     {shell.user}")
+print()
+usage = fs.disk_usage()
+print(f"  Диск занят:       {safety.fmt_size(usage)}")
+print(f"  Текущая сессия:   {safety.session_str()}")
+print()
+print(f"  Язык:             ru")
+print(f"  Python:           3.x")
+[/CODE]
+
+[DATA]
+folder: /apps/data/info
+[/DATA]
+
+[OTHER]
+Free License -- Kostyl Studios
+[/OTHER]
+
+[END]

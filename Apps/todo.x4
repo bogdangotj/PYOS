@@ -1,0 +1,81 @@
+[INFO]
+name: todo
+description: Менеджер списка дел с отметками о выполнении
+version: 1.0.0
+author: Kostyl Studios
+tag: Utility
+background: false
+
+[CODE]
+color("=== Список дел (To-Do) ===", "cyan")
+print()
+
+todo_file = "/apps/data/todo/todo.txt"
+fmkdir("/apps/data/todo")
+
+def load_todos():
+    data = fread(todo_file)
+    if not data:
+        return []
+    return [line.strip() for line in data.splitlines() if line.strip()]
+
+def save_todos(todos):
+    fwrite(todo_file, "\n".join(todos))
+
+def show_todos(todos):
+    if not todos:
+        print("  Список дел пуст.")
+    else:
+        print("  Ваши дела:")
+        for i, t in enumerate(todos, 1):
+            print(f"    {i}. {t}")
+
+while True:
+    todos = load_todos()
+    print()
+    color("1. Показать дела", "white")
+    color("2. Добавить дело", "white")
+    color("3. Удалить дело", "white")
+    color("4. Очистить всё", "white")
+    color("5. Выход", "white")
+    print()
+    
+    choice = input("Выберите (1-5): ").strip()
+    
+    if choice == "1":
+        show_todos(todos)
+    elif choice == "2":
+        text = input("  Текст дела: ").strip()
+        if text:
+            todos.append(text)
+            save_todos(todos)
+            color("  Дело добавлено!", "green")
+    elif choice == "3":
+        show_todos(todos)
+        if todos:
+            num = input("  Номер дела для удаления: ").strip()
+            if num.isdigit() and 1 <= int(num) <= len(todos):
+                removed = todos.pop(int(num) - 1)
+                save_todos(todos)
+                color(f"  Удалено: {removed}", "yellow")
+    elif choice == "4":
+        confirm = input("  Очистить все дела? (y/n): ").strip().lower()
+        if confirm in ('y', 'yes', 'да', 'д'):
+            save_todos([])
+            color("  Список дел очищен.", "yellow")
+    elif choice in ("5", "exit", "q"):
+        color("Менеджер дел закрыт.", "green")
+        break
+    else:
+        print("  Неверный выбор.")
+[/CODE]
+
+[DATA]
+folder: /apps/data/todo
+[/DATA]
+
+[OTHER]
+Free License -- Kostyl Studios
+[/OTHER]
+
+[END]

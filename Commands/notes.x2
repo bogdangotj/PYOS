@@ -1,24 +1,24 @@
 [INFO]
 name: notes
-description: Менеджер текстовых заметок
-version: 1.0.0
+description: Менеджер текстовых заметок с цветовым выводом
+version: 1.1.0
 author: Kostyl Studios
 tag: Technical
 background: false
 
 [CODE]
-print("=== Менеджер заметок ===")
+color("=== Менеджер заметок ===", "cyan")
 print()
 
 notes_dir = "/apps/data/notes"
-fs.mkdir(notes_dir)
+fmkdir(notes_dir)
 
 while True:
-    print("1. Создать заметку")
-    print("2. Прочитать заметку")
-    print("3. Список заметок")
-    print("4. Удалить заметку")
-    print("5. Выход")
+    color("1. Создать заметку", "white")
+    color("2. Прочитать заметку", "white")
+    color("3. Список заметок", "white")
+    color("4. Удалить заметку", "white")
+    color("5. Выход", "white")
     print()
     
     choice = input("Выберите (1-5): ").strip()
@@ -27,28 +27,30 @@ while True:
         name = input("  Имя заметки: ").strip()
         if name:
             text = input("  Текст: ")
-            fs.write_file(f"{notes_dir}/{name}.txt", text)
-            print("  Сохранено!")
+            fwrite(f"{notes_dir}/{name}.txt", text)
+            color("  Сохранено!", "green")
     elif choice == "2":
         name = input("  Имя заметки: ").strip()
-        data = fs.read_file(f"{notes_dir}/{name}.txt")
+        data = fread(f"{notes_dir}/{name}.txt")
         if data:
             print(f"  -- {name} --")
             print(data)
         else:
-            print("  Не найдено.")
+            color("  Не найдено.", "red")
     elif choice == "3":
-        items = fs.list_dir(notes_dir)
+        items = flist(notes_dir)
         if items:
+            print("  Заметки:")
             for it in items:
-                print(f"  * {it['name']}")
+                print(f"    * {it}")
         else:
             print("  Заметок нет.")
     elif choice == "4":
         name = input("  Имя заметки: ").strip()
-        fs.delete(f"{notes_dir}/{name}.txt")
-        print("  Удалено.")
+        fdelete(f"{notes_dir}/{name}.txt")
+        color("  Удалено.", "yellow")
     elif choice in ("5", "exit", "q"):
+        color("Менеджер заметок закрыт.", "green")
         break
     else:
         print("  Неверный выбор.")

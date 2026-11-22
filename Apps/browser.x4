@@ -1,42 +1,58 @@
 [INFO]
 name: browser
-description: Демонстрационный веб-браузер с закладками
-version: 1.0.0
+description: Демонстрационный веб-браузер с закладками и историей
+version: 2.0.0
 author: Kostyl Studios
 tag: Utility
 background: false
 
 [CODE]
-print("=== PyOS Browser v1.0 ===")
+color("=== PyOS Browser v2.0 ===", "cyan")
 print()
 
 bookmarks = {
     "1": "https://github.com/bogdangotj/PYOS",
     "2": "https://python.org",
     "3": "https://github.com",
+    "4": "https://docs.python.org",
 }
+history = []
 
 while True:
-    print("1. Перейти по адресу")
-    print("2. Закладки")
-    print("3. История")
-    print("4. Выход")
+    color("1. Перейти по адресу", "white")
+    color("2. Закладки", "white")
+    color("3. История посещений", "white")
+    color("4. Очистить историю", "white")
+    color("5. Выход", "white")
     print()
     
-    choice = input("Выберите (1-4): ").strip()
+    choice = input("Выберите (1-5): ").strip()
     
     if choice == "1":
         url = input("  URL: ").strip()
         if url:
+            if not url.startswith(("http://", "https://")):
+                url = "https://" + url
+            history.append(url)
             print(f"  Загрузка {url}...")
-            print("  [Демо-режим: страница не загружается]")
+            print("  [Демо-режим: страница отображается в симуляторе]")
+            print(f"  Заголовок: Страница '{url}'")
     elif choice == "2":
         print("  Закладки:")
         for k, v in bookmarks.items():
             print(f"    {k}. {v}")
     elif choice == "3":
-        print("  История пуста.")
-    elif choice in ("4", "exit", "q"):
+        if history:
+            print("  История посещений:")
+            for i, h in enumerate(history[-10:], 1):
+                print(f"    {i}. {h}")
+        else:
+            print("  История пуста.")
+    elif choice == "4":
+        history.clear()
+        print("  История очищена.")
+    elif choice in ("5", "exit", "q"):
+        color("Браузер закрыт.", "green")
         break
     else:
         print("  Неверный выбор.")

@@ -1,0 +1,37 @@
+[INFO]
+name: uptime
+description: Время работы сессии PyOS и время запуска системы
+version: 1.0.0
+author: Kostyl Studios
+tag: System
+background: false
+
+[CODE]
+color("=== Время работы системы ===", "cyan")
+print()
+
+now = datetime.datetime.now()
+boot = kernel.boot_time
+uptime_delta = now - boot
+hours = int(uptime_delta.total_seconds() // 3600)
+minutes = int((uptime_delta.total_seconds() % 3600) // 60)
+seconds = int(uptime_delta.total_seconds() % 60)
+
+print(f"  Время запуска:   {boot.strftime('%H:%M:%S %d.%m.%Y')}")
+print(f"  Текущее время:   {now.strftime('%H:%M:%S %d.%m.%Y')}")
+print(f"  Аптайм сессии:   {hours:02d}ч {minutes:02d}м {seconds:02d}с")
+print(f"  Время сессии:    {safety.session_str()}")
+print()
+print(f"  Пользователь:    {shell.user}")
+print(f"  Компьютер:       {kernel.hostname}")
+[/CODE]
+
+[DATA]
+folder: /apps/data/uptime
+[/DATA]
+
+[OTHER]
+Free License -- Kostyl Studios
+[/OTHER]
+
+[END]

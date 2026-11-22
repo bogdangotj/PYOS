@@ -1,0 +1,40 @@
+[INFO]
+name: system
+description: Информация о системе - версия, сборка, аптайм, сессия
+version: 1.0.0
+author: Kostyl Studios
+tag: System
+background: false
+
+[CODE]
+color("=== Информация о системе ===", "cyan")
+print()
+print(f"  ОС:           PyOS v{kernel.VERSION} build {kernel.BUILD}")
+print(f"  Компания:     {kernel.COMPANY}")
+print(f"  Компьютер:    {kernel.hostname}")
+print(f"  Пользователь: {shell.user}")
+print(f"  Сессия:       {safety.session_str()}")
+print(f"  Диск:         {fs.current_disk}:")
+print(f"  Язык:         {settings.lang.upper()}")
+print(f"  Отладка:      {'ВКЛ' if settings.debug_mode else 'ВЫКЛ'}")
+print(f"  Smart Memory: {'ВКЛ' if settings.smart_memory else 'ВЫКЛ'}")
+print(f"  UAC:          {settings.get_uac_name()}")
+print()
+apps_count = len(kernel.apps.apps) if kernel.apps else 0
+disabled_count = len(kernel.apps.list_disabled()) if kernel.apps else 0
+print(f"  Приложений:   {apps_count} активных, {disabled_count} отключено")
+print()
+report = safety.disk_report(fs)
+print(f"  Диск занят:   {safety.fmt_size(report['total'])}")
+print(f"  Файлов:       {report['count']}")
+[/CODE]
+
+[DATA]
+folder: /apps/data/system
+[/DATA]
+
+[OTHER]
+Free License -- Kostyl Studios
+[/OTHER]
+
+[END]

@@ -1,22 +1,20 @@
 [INFO]
 name: game
-description: Игра "Угадай число" с подсчётю попыток
-version: 1.2.0
+description: Игра "Угадай число" с подсчётом попыток и уведомлениями
+version: 2.0.0
 author: Kostyl Studios
 tag: Game
 background: false
 
 [CODE]
-print("=== Игра 'Угадай число' v1.2 ===")
+color("=== Игра 'Угадай число' v2.0 ===", "magenta")
 print()
-
-import random
 
 target = random.randint(1, 100)
 attempts = 0
 
-print("Я загадал число от 1 до 100.")
-print("Попробуйте угадать!")
+color("Я загадал число от 1 до 100.", "cyan")
+color("Попробуйте угадать!", "cyan")
 print()
 
 while True:
@@ -27,18 +25,18 @@ while True:
         break
     
     if not val.isdigit():
-        print("Введите целое число!")
+        color("  Введите целое число!", "red")
         continue
     
     num = int(val)
     attempts += 1
     
     if num < target:
-        print("  Моё число больше!")
+        color("  Моё число больше!", "yellow")
     elif num > target:
-        print("  Моё число меньше!")
+        color("  Моё число меньше!", "yellow")
     else:
-        print(f"ПОЗДРАВЛЯЕМ! Угадали за {attempts} попыток!")
+        color(f"ПОЗДРАВЛЯЕМ! Угадали за {attempts} попыток!", "green")
         notify("Игра: Угадай число", f"Победа за {attempts} попыток!")
         break
 [/CODE]

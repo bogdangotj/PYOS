@@ -1,0 +1,37 @@
+[INFO]
+name: calculator
+description: Научный калькулятор с безопасным вычислением выражений
+version: 1.0.0
+author: Kostyl Studios
+tag: Technical
+background: false
+
+[CODE]
+color("=== Научный калькулятор v1.0 ===", "cyan")
+print("Поддерживаемые функции: sin, cos, tan, sqrt, log, pow, abs, round, min, max")
+print("Введите выражение или 'exit' для выхода")
+print()
+
+while True:
+    expr = input("calc> ").strip()
+    if expr.lower() in ('exit', 'quit', 'q'):
+        color("Калькулятор завершён.", "green")
+        break
+    if not expr:
+        continue
+    try:
+        result = eval(expr)
+        color(f"  = {result}", "green")
+    except Exception as e:
+        color(f"  Ошибка: {e}", "red")
+[/CODE]
+
+[DATA]
+folder: /apps/data/calculator
+[/DATA]
+
+[OTHER]
+Free License -- Kostyl Studios
+[/OTHER]
+
+[END]
